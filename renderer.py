@@ -1,3 +1,29 @@
+from enum import StrEnum
+
+
+class Printable(StrEnum):
+    """Vertical Line"""
+    VLINE = "\u2503"
+    """Horizontal Line"""
+    HLINE = "\u2501"
+    """Upper-Left corner"""
+    ULCORNER = "\u250F"
+    """Upper-Right corner"""
+    URCORNER = "\u2513"
+    """Bottom-Left corner"""
+    BLCORNER = "\u2517"
+    """Bottom-Right corner"""
+    BRCORNER = "\u251B"
+    """Bottom-Half cross"""
+    BHCROSS = "\u2533"
+    """Upper-Half cross"""
+    UHCROSS = "\u253B"
+    """Left-Half cross"""
+    LHCROSS = "\u252B"
+    """Right-Half cross"""
+    RHCROSS = "\u2523"
+    """Cross"""
+    CROSS = "\u254B"
 
 
 class Renderer:
@@ -5,36 +31,51 @@ class Renderer:
 
     def load_seed(self) -> None:
         self.seed["rows"] = 21
-        self.seed["cols"] = 21
+        self.seed["cols"] = 41
 
     def render(self) -> None:
-        for r in range(int(self.seed["rows"] / 2)):
-            if r == 0:
-                print("\u250F", end="")
-                for c in range(self.seed["cols"] - 2):
-                    if c % 2:
-                        print("\u2533", end="")
-                    else:
-                        print("\u2501", end="")
-                print("\u2513")
+        row_toggle: int = 1
+        for r in range(int(self.seed["rows"])):
 
-            elif r == int(self.seed["rows"] / 2) - 1:
-                print("\u2517", end="")
+            if r == 0:
+                print(Printable.ULCORNER, end="")
                 for c in range(self.seed["cols"] - 2):
-                    if c % 2:
-                        print("\u253B", end="")
+                    if (c + 1) % 5 == 0:
+                        print(Printable.BHCROSS, end="")
                     else:
-                        print("\u2501", end="")
-                print("\u251B")
+                        print(Printable.HLINE, end="")
+                print(Printable.URCORNER)
+
+            elif r == int(self.seed["rows"]) - 1:
+                print(Printable.BLCORNER, end="")
+                for c in range(self.seed["cols"] - 2):
+                    if (c + 1) % 5 == 0:
+                        print(Printable.UHCROSS, end="")
+                    else:
+                        print(Printable.HLINE, end="")
+                print(Printable.BRCORNER)
 
             else:
-                print("\u2523", end="")
+                if not row_toggle:
+                    print(Printable.RHCROSS, end="")
+                else:
+                    print(Printable.VLINE, end="")
                 for c in range(self.seed["cols"] - 2):
-                    if c % 2:
-                        print("\u254B", end="")
+                    if (c + 1) % 5 == 0:
+                        if not row_toggle:
+                            print(Printable.CROSS, end="")
+                        else:
+                            print(Printable.VLINE, end="")
                     else:
-                        print(end="\u2501")
-                print("\u252B")
+                        if not row_toggle:
+                            print(Printable.HLINE, end="")
+                        else:
+                            print(end=" ")
+                if not row_toggle:
+                    print(Printable.LHCROSS)
+                else:
+                    print(Printable.VLINE)
+                row_toggle = not row_toggle
 
 
 def main() -> None:
