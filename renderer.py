@@ -40,7 +40,7 @@ class Renderer:
             if r == 0:
                 print(Printable.ULCORNER, end="")
                 for c in range(self.seed["cols"] - 2):
-                    if (c + 1) % 5 == 0:
+                    if (c + 1) % 4 == 0:
                         print(Printable.BHCROSS, end="")
                     else:
                         print(Printable.HLINE, end="")
@@ -49,7 +49,7 @@ class Renderer:
             elif r == int(self.seed["rows"]) - 1:
                 print(Printable.BLCORNER, end="")
                 for c in range(self.seed["cols"] - 2):
-                    if (c + 1) % 5 == 0:
+                    if (c + 1) % 4 == 0:
                         print(Printable.UHCROSS, end="")
                     else:
                         print(Printable.HLINE, end="")
@@ -61,7 +61,7 @@ class Renderer:
                 else:
                     print(Printable.VLINE, end="")
                 for c in range(self.seed["cols"] - 2):
-                    if (c + 1) % 5 == 0:
+                    if (c + 1) % 4 == 0:
                         if not row_toggle:
                             print(Printable.CROSS, end="")
                         else:
