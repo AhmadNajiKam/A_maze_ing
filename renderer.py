@@ -2,53 +2,53 @@ from enum import StrEnum
 
 
 class Printable(StrEnum):
-    """Vertical Line"""
+    """Vertical Line ┃"""
     VLINE = "\u2503"
-    """Horizontal Line"""
+    """Horizontal Line ━"""
     HLINE = "\u2501"
-    """Upper-Left corner"""
+    """Upper-Left corner ┏"""
     ULCORNER = "\u250F"
-    """Upper-Right corner"""
+    """Upper-Right corner ┓"""
     URCORNER = "\u2513"
-    """Bottom-Left corner"""
+    """Bottom-Left corner ┗"""
     BLCORNER = "\u2517"
-    """Bottom-Right corner"""
+    """Bottom-Right corner ┛"""
     BRCORNER = "\u251B"
-    """Bottom-Half cross"""
+    """Bottom-Half cross ┳"""
     BHCROSS = "\u2533"
-    """Upper-Half cross"""
+    """Upper-Half cross ┻"""
     UHCROSS = "\u253B"
-    """Left-Half cross"""
+    """Left-Half cross ┫"""
     LHCROSS = "\u252B"
-    """Right-Half cross"""
+    """Right-Half cross ┣"""
     RHCROSS = "\u2523"
-    """Cross"""
+    """Cross ╋"""
     CROSS = "\u254B"
 
 
 class Renderer:
-    seed: dict[str, int] = {}
+    _seed: dict[str, int] = {}
 
-    def load_seed(self) -> None:
-        self.seed["rows"] = 21
-        self.seed["cols"] = 41
+    def _load_seed(self) -> None:
+        self._seed["rows"] = 21
+        self._seed["cols"] = 41
 
-    def render(self) -> None:
+    def _render_borders(self) -> None:
         row_toggle: int = 1
-        for r in range(int(self.seed["rows"])):
+        for r in range(int(self._seed["rows"])):
 
             if r == 0:
                 print(Printable.ULCORNER, end="")
-                for c in range(self.seed["cols"] - 2):
+                for c in range(self._seed["cols"] - 2):
                     if (c + 1) % 4 == 0:
                         print(Printable.BHCROSS, end="")
                     else:
                         print(Printable.HLINE, end="")
                 print(Printable.URCORNER)
 
-            elif r == int(self.seed["rows"]) - 1:
+            elif r == int(self._seed["rows"]) - 1:
                 print(Printable.BLCORNER, end="")
-                for c in range(self.seed["cols"] - 2):
+                for c in range(self._seed["cols"] - 2):
                     if (c + 1) % 4 == 0:
                         print(Printable.UHCROSS, end="")
                     else:
@@ -60,7 +60,7 @@ class Renderer:
                     print(Printable.RHCROSS, end="")
                 else:
                     print(Printable.VLINE, end="")
-                for c in range(self.seed["cols"] - 2):
+                for c in range(self._seed["cols"] - 2):
                     if (c + 1) % 4 == 0:
                         if not row_toggle:
                             print(Printable.CROSS, end="")
@@ -77,10 +77,40 @@ class Renderer:
                     print(Printable.VLINE)
                 row_toggle = not row_toggle
 
+    def _move_cursor(self, direction: str, steps: int) -> None:
+
+        match direction:
+            case "UP":
+                print(f"\x1B[{steps}A", end="")
+            case "DOWN":
+                print(f"\x1B[{steps}B", end="")
+            case "RIGHT":
+                print(f"\x1B[{steps}C", end="")
+            case "LEFT":
+                print(f"\x1B[{steps}D", end="")
+
+    def render(self) -> None:
+        self._load_seed()
+        self._render_borders()
+       # Save where you started before moving
+       #  print("\x1B7", end="")
+       # self._move_cursor("RIGHT", 1)
+       # self._move_cursor("UP", 2)
+       # print(end=Printable.HLINE)
+       # print(end=Printable.HLINE)
+       # print(end=Printable.HLINE)
+       # print(end=Printable.BRCORNER)
+       # self._move_cursor("LEFT", 1)
+       # self._move_cursor("DOWN", 1)
+       # print(end=Printable.HLINE)
+       # self._move_cursor("RIGHT", 3)
+       # print(end=Printable.HLINE)
+       # # Restore where you started before moving
+       # print("\x1B8", end="")
+
 
 def main() -> None:
     rnd = Renderer()
-    rnd.load_seed()
     rnd.render()
 
 
