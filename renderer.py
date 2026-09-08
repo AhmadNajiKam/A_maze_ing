@@ -92,21 +92,6 @@ class Renderer:
     def render(self) -> None:
         self._load_seed()
         self._render_borders()
-       # Save where you started before moving
-       #  print("\x1B7", end="")
-       # self._move_cursor("RIGHT", 1)
-       # self._move_cursor("UP", 2)
-       # print(end=Printable.HLINE)
-       # print(end=Printable.HLINE)
-       # print(end=Printable.HLINE)
-       # print(end=Printable.BRCORNER)
-       # self._move_cursor("LEFT", 1)
-       # self._move_cursor("DOWN", 1)
-       # print(end=Printable.HLINE)
-       # self._move_cursor("RIGHT", 3)
-       # print(end=Printable.HLINE)
-       # # Restore where you started before moving
-       # print("\x1B8", end="")
 
 
 def main() -> None:
