@@ -90,6 +90,7 @@ class Renderer:
                 print(f"\x1B[{steps}D", end="")
 
     def render(self) -> None:
+        # This is the final render function
         self._load_seed()
         self._render_borders()
 
