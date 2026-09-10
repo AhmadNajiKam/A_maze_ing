@@ -1,4 +1,18 @@
-from enum import StrEnum
+from enum import StrEnum, Enum
+import termios
+import sys
+import tty
+
+
+class Directions(int, Enum):
+    """North"""
+    NORTH = 0b0001
+    """East"""
+    EAST = 0b0010
+    """South"""
+    SOUTH = 0b0100
+    """West"""
+    WEST = 0b1000
 
 
 class Printable(StrEnum):
@@ -6,6 +20,14 @@ class Printable(StrEnum):
     VLINE = "\u2503"
     """Horizontal Line ━"""
     HLINE = "\u2501"
+    """Left Vertical Line"""
+    LVLINE = "\u258F"
+    """Right Vertical Line"""
+    RVLINE = "\u2595"
+    """Upper Horizontal Line"""
+    UHLINE = "\u2594"
+    """Bottom Horizontal Line"""
+    BHLINE = "\u2581"
     """Upper-Left corner ┏"""
     ULCORNER = "\u250F"
     """Upper-Right corner ┓"""
@@ -28,71 +50,96 @@ class Printable(StrEnum):
 
 class Renderer:
     _seed: dict[str, int] = {}
+    _maze: list[str] = []
+    _translator: dict[str, int] = {
+        '0': 0, '1': 1, '2': 2, '3': 3, '4': 4,
+        '5': 5, '6': 6, '7': 7, '8': 8, '9': 9,
+        'A': 10, 'B': 11, 'C': 12, 'D': 13, 'E': 14, 'F': 15}
 
     def _load_seed(self) -> None:
-        self._seed["rows"] = 21
-        self._seed["cols"] = 41
+        self._seed["rows"] = 30
+        self._seed["cols"] = 60
+        self._maze: list[str] = ["B9153B9153D1795513B955157",
+                                 "AAC3AC6A94169457A86C3BC53",
+                                 "AABAC53AAFAFAFFFAE956853A",
+                                 "AAAA93C6AFEF857FC543D2D2A",
+                                 "AC2C6C3D2FFFAFFFB93C3C3AA",
+                                 "83AD13C3AD3FAFD52EAD456EA",
+                                 "AAA96A96C56FAFFFC3C555556",
+                                 "AC6ABAA93953A953943D55153",
+                                 "C556C6C6C107;97C46D46D45556D6"
+                                 ]
 
-    def _render_borders(self) -> None:
-        row_toggle: int = 1
-        for r in range(int(self._seed["rows"])):
+    def _cursor_position(self) -> tuple[int, int]:
+        fd = sys.stdin.fileno()
+        old = termios.tcgetattr(fd)
 
+        try:
+            tty.setraw(fd)
+            print(end="\x1b[6n", flush=True)
+
+            response = ""
+            while not response.endswith("R"):
+                response += sys.stdin.read(1)
+
+            row, col = response[2:-1].split(";")
+            return int(row), int(col)
+        finally:
+            termios.tcsetattr(fd, termios.TCSADRAIN, old)
+
+    def _render_borders(self) -> list[tuple[int, int]]:
+        start_coordinates: tuple[int, int] = self._cursor_position()
+        for r in range(int(self._seed["rows"] + 1)):
+            # TODO: Needs some refactoring for the color codes
             if r == 0:
-                print(Printable.ULCORNER, end="")
-                for c in range(self._seed["cols"] - 2):
-                    if (c + 1) % 4 == 0:
-                        print(Printable.BHCROSS, end="")
-                    else:
-                        print(Printable.HLINE, end="")
-                print(Printable.URCORNER)
+                print("\x1B[107;97m" + Printable.ULCORNER, end="\x1B[0m")
+                for c in range(self._seed["cols"] + 1):
+                    print("\x1B[107;97m" + Printable.HLINE, end="\x1B[0m")
+                print("\x1B[107;97m" + Printable.URCORNER + "\x1B[0m")
 
-            elif r == int(self._seed["rows"]) - 1:
-                print(Printable.BLCORNER, end="")
-                for c in range(self._seed["cols"] - 2):
-                    if (c + 1) % 4 == 0:
-                        print(Printable.UHCROSS, end="")
-                    else:
-                        print(Printable.HLINE, end="")
-                print(Printable.BRCORNER)
+            elif r == int(self._seed["rows"]):
+                print("\x1B[107;97m" + Printable.BLCORNER, end="\x1B[0m")
+                for c in range(self._seed["cols"] + 1):
+                    print("\x1B[107;97m" + Printable.HLINE, end="\x1B[0m")
+                print("\x1B[107;97m" + Printable.BRCORNER + "\x1B[0m")
 
             else:
-                if not row_toggle:
-                    print(Printable.RHCROSS, end="")
-                else:
-                    print(Printable.VLINE, end="")
-                for c in range(self._seed["cols"] - 2):
-                    if (c + 1) % 4 == 0:
-                        if not row_toggle:
-                            print(Printable.CROSS, end="")
-                        else:
-                            print(Printable.VLINE, end="")
-                    else:
-                        if not row_toggle:
-                            print(Printable.HLINE, end="")
-                        else:
-                            print(end=" ")
-                if not row_toggle:
-                    print(Printable.LHCROSS)
-                else:
-                    print(Printable.VLINE)
-                row_toggle = not row_toggle
+                print("\x1B[107;97m" + Printable.VLINE, end="\x1B[0m")
+                for c in range(self._seed["cols"] + 1):
+                    print(end=" ")
+                print("\x1B[107;97m" + Printable.VLINE + "\x1B[0m")
+        end_coordinates: tuple[int, int] = self._cursor_position()
+        return [start_coordinates, end_coordinates]
 
-    def _move_cursor(self, direction: str, steps: int) -> None:
+    def _converter(self, character: str) -> int:
+        return self._translator[character]
 
-        match direction:
-            case "UP":
-                print(f"\x1B[{steps}A", end="")
-            case "DOWN":
-                print(f"\x1B[{steps}B", end="")
-            case "RIGHT":
-                print(f"\x1B[{steps}C", end="")
-            case "LEFT":
-                print(f"\x1B[{steps}D", end="")
+    def _put_cell(self, value: int) -> None:
+        pass
+
+    def _draw(self, start_coordinates: tuple[int, int]) -> None:
+        for row in range(len(self._maze)):
+            for col in range(len(self._maze[0])):
+                self._move_cursor(
+                    (start_coordinates[0] + row + 1,
+                     start_coordinates[1] + col + 1))
+                print(end="+")
+
+    def _move_cursor(self, coordinates: tuple[int, int]) -> None:
+        print(end=f"\x1B[{coordinates[0]};{coordinates[1]}H")
 
     def render(self) -> None:
         # This is the final render function
         self._load_seed()
-        self._render_borders()
+        coordinates: list[tuple[int, int]] = self._render_borders()
+        self._draw(coordinates[0])
+        self._draw(coordinates[0])
+
+        # To restore the cursor to the right place
+        print(end=f"\x1B[{coordinates[1][0]};{coordinates[1][1]}H")
+        # print(end="\x1B7")
+        # self._draw()
+        # print(end="\x1B8")
 
 
 def main() -> None:
