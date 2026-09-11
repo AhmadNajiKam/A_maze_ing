@@ -57,8 +57,6 @@ class Renderer:
         'A': 10, 'B': 11, 'C': 12, 'D': 13, 'E': 14, 'F': 15}
 
     def _load_seed(self) -> None:
-        self._seed["rows"] = 30
-        self._seed["cols"] = 60
         self._maze: list[str] = ["B9153B9153D1795513B955157",
                                  "AAC3AC6A94169457A86C3BC53",
                                  "AABAC53AAFAFAFFFAE956853A",
@@ -67,7 +65,7 @@ class Renderer:
                                  "83AD13C3AD3FAFD52EAD456EA",
                                  "AAA96A96C56FAFFFC3C555556",
                                  "AC6ABAA93953A953943D55153",
-                                 "C556C6C6C107;97C46D46D45556D6"
+                                 "C556C6C6C47C46D46D45556D6"
                                  ]
 
     def _cursor_position(self) -> tuple[int, int]:
@@ -89,23 +87,25 @@ class Renderer:
 
     def _render_borders(self) -> list[tuple[int, int]]:
         start_coordinates: tuple[int, int] = self._cursor_position()
-        for r in range(int(self._seed["rows"] + 1)):
+        rows: int = len(self._maze)
+        cols: int = len(self._maze[0])
+        for r in range(rows + 1):
             # TODO: Needs some refactoring for the color codes
             if r == 0:
                 print("\x1B[107;97m" + Printable.ULCORNER, end="\x1B[0m")
-                for c in range(self._seed["cols"] + 1):
+                for c in range(cols + 1):
                     print("\x1B[107;97m" + Printable.HLINE, end="\x1B[0m")
                 print("\x1B[107;97m" + Printable.URCORNER + "\x1B[0m")
 
-            elif r == int(self._seed["rows"]):
+            elif r == int(rows):
                 print("\x1B[107;97m" + Printable.BLCORNER, end="\x1B[0m")
-                for c in range(self._seed["cols"] + 1):
+                for c in range(cols + 1):
                     print("\x1B[107;97m" + Printable.HLINE, end="\x1B[0m")
                 print("\x1B[107;97m" + Printable.BRCORNER + "\x1B[0m")
 
             else:
                 print("\x1B[107;97m" + Printable.VLINE, end="\x1B[0m")
-                for c in range(self._seed["cols"] + 1):
+                for c in range(cols + 1):
                     print(end=" ")
                 print("\x1B[107;97m" + Printable.VLINE + "\x1B[0m")
         end_coordinates: tuple[int, int] = self._cursor_position()
@@ -119,11 +119,21 @@ class Renderer:
 
     def _draw(self, start_coordinates: tuple[int, int]) -> None:
         for row in range(len(self._maze)):
+            multiplier: int = 0
             for col in range(len(self._maze[0])):
                 self._move_cursor(
                     (start_coordinates[0] + row + 1,
-                     start_coordinates[1] + col + 1))
-                print(end="+")
+                     start_coordinates[1] + col + 1 + multiplier * 2))
+                print(end=Printable.BHLINE)
+                print(end=Printable.BHLINE)
+                if row == 0:
+                    print(end=Printable.BHLINE)
+                self._move_cursor(
+                    (start_coordinates[0] + row + 2,
+                     start_coordinates[1] + col + 3 + multiplier * 2))
+                print(end=Printable.VLINE)
+                print(end="\x1b[0m")
+                multiplier += 1
 
     def _move_cursor(self, coordinates: tuple[int, int]) -> None:
         print(end=f"\x1B[{coordinates[0]};{coordinates[1]}H")
