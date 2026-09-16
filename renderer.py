@@ -50,7 +50,7 @@ class Printable(StrEnum):
 
 
 class Renderer:
-    _corner: dict[int, Printable] = {
+    _corner: dict[int, str] = {
         0: " ", 1: Printable.UVLINE, 2: Printable.RHLINE,
         3: Printable.BLCORNER, 4: Printable.BVLINE,  5: Printable.VLINE,
         6: Printable.ULCORNER, 7: Printable.RHCROSS, 8: Printable.LHLINE,

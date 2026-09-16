@@ -4,11 +4,12 @@ from renderer import Renderer
 from parser import Parser, Config
 
 
-def main():
+def main() -> None:
     parser = Parser()
-    config: Config = parser._read_config("config.txt")
+    config: Config | None = parser._read_config("config.txt")
 
-    mazeGen = MazeGenerator(config)
+    if config is not None:
+        mazeGen = MazeGenerator(config)
     maze: list[list[int]] = mazeGen._generate()
     mazeGen._put_42()
     rend = Renderer(maze)

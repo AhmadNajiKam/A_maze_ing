@@ -28,10 +28,11 @@ class Parser:
                 else:
                     return (int(values[0]), int(values[1]))
             case "PERFECT":
-                if value.lower() != "true" and value.lower() != "false":
-                    return -1
-                else:
-                    return bool(value)
+                if value.lower() == "true":
+                    return True
+                elif value.lower() == "false":
+                    return False
+                return -1
             case "SEED":
                 if value.isdigit() == 0:
                     return -1
@@ -46,11 +47,11 @@ class Parser:
         unnormalized_line: list[str] = line.replace("\n", "").split("=")
         if len(unnormalized_line) != 2:
             print(f"{line} is syntactically wrong, write KEY=VALUE pair.")
-            return (-1, -1)
+            return ("", "")
         key: str = unnormalized_line[0].upper()
         value: str = unnormalized_line[1]
         if self._parse_engine(key, value) == -1:
-            return (-1, -1)
+            return ("", "")
         return (key, value)
 
     def _read_config(self, config_file: str) -> Config | None:
@@ -60,16 +61,15 @@ class Parser:
                 config_array: list[Any] = []
                 for line in file:
                     kv: tuple[str, str] = self._get_key_value(line)
-                    if self._get_key_value(line)[0] != -1:
+                    if self._get_key_value(line)[0] != "":
                         config_array.append(self._parse_engine(kv[0], kv[1]))
                     else:
                         print("Configuration error")
-                        return
+                        return None
                 if config_array[2] == config_array[3]:
                     print("Configuration error")
-                    return
+                    return None
                 config = Config(config_array)
-                return config
 
         except FileNotFoundError:
             print("The file does not exist.")
@@ -79,3 +79,4 @@ class Parser:
 
         except OSError as e:
             print(f"Operating system error: {e}")
+        return config
