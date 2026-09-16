@@ -66,9 +66,6 @@ class Parser:
                     else:
                         print("Configuration error")
                         return None
-                if config_array[2] == config_array[3]:
-                    print("Configuration error")
-                    return None
                 config = Config(config_array)
 
         except FileNotFoundError:
