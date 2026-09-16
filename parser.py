@@ -2,14 +2,14 @@ from typing import Any
 
 
 class Config:
-    def __init__(self, values: list[Any]) -> None:
-
-        self._WIDTH: int = values[0]
-        self._HEIGHT: int = values[1]
-        self._ENTRY: tuple[int, int] = values[2]
-        self._EXIT: tuple[int, int] = values[3]
-        self._OUTPUT_FILE: str = values[4]
-        self._PERFECT: bool = values[5]
+    def __init__(self, config_array: list[Any]) -> None:
+        self._WIDTH: int = config_array[0]
+        self._HEIGHT: int = config_array[1]
+        self._ENTRY: tuple[int, int] = config_array[2]
+        self._EXIT: tuple[int, int] = config_array[3]
+        self._OUTPUT_FILE: str = config_array[4]
+        self._PERFECT: bool = config_array[5]
+        self._SEED: int = config_array[6]
 
 
 class Parser:
@@ -32,6 +32,11 @@ class Parser:
                     return -1
                 else:
                     return bool(value)
+            case "SEED":
+                if value.isdigit() == 0:
+                    return -1
+                else:
+                    return int(value)
             case "OUTPUT_FILE":
                 return value
             case _:
@@ -60,6 +65,9 @@ class Parser:
                     else:
                         print("Configuration error")
                         return
+                if config_array[2] == config_array[3]:
+                    print("Configuration error")
+                    return
                 config = Config(config_array)
                 return config
 
@@ -71,12 +79,3 @@ class Parser:
 
         except OSError as e:
             print(f"Operating system error: {e}")
-
-
-def main() -> None:
-    parser = Parser()
-    print(parser._read_config("config.txt"))
-
-
-if __name__ == "__main__":
-    main()

@@ -1,5 +1,5 @@
 from enum import StrEnum, Enum
-from os import system
+from os import system, get_terminal_size
 import termios
 import sys
 import tty
@@ -58,29 +58,25 @@ class Renderer:
         12: Printable.URCORNER, 13: Printable.LHCROSS, 14: Printable.BHCROSS,
         15: Printable.CROSS
     }
-    _maze: list[str] = []
-    _strtohex: dict[str, int] = {
-        '0': 0, '1': 1, '2': 2, '3': 3, '4': 4,
-        '5': 5, '6': 6, '7': 7, '8': 8, '9': 9,
-        'A': 10, 'B': 11, 'C': 12, 'D': 13, 'E': 14, 'F': 15}
 
-    def _load_maze(self) -> None:
-        self._maze: list[str] = [
-            "BBD7D3FD3BFBFBF",
-            "C6953A93AC1692F",
-            "D56BAAAAC3C3AC7",
-            "F93C6AC6D2BAA97",
-            "D6C552B916AC687",
-            "B9553AAEC5697AB",
-            "EC53C6C5555692E",
-            "D156955139556AF",
-            "FA93853AC6953C7",
-            "D6AC692AD3C3A97",
-            "D5453EAC56946C7",
-            "D553C785396953B",
-            "B97A916946D692E",
-            "EC3AAC3C55556C7",
-            "D7EEEFED7D7FD7F"]
+    def __init__(self, maze: list[list[int]]) -> None:
+        self._maze: list[list[int]] = maze
+
+    def _check_terminal_size(self) -> None:
+        terminal = get_terminal_size(sys.stdout.fileno())
+
+        required_cols = len(self._maze[0]) * 3 + 1
+        required_rows = len(self._maze) * 2 + 2
+
+        if (terminal.columns < required_cols
+                or terminal.lines < required_rows):
+            raise ValueError(
+                f"Maze requires {required_cols} columns × {
+                    required_rows} rows, "
+                f"but the terminal has "
+                f"{terminal.columns} columns × {terminal.lines} rows. "
+                "Zoom out or enlarge the terminal."
+            )
 
     def _cursor_position(self) -> tuple[int, int]:
         fd = sys.stdin.fileno()
@@ -126,12 +122,9 @@ class Renderer:
         return [(start_coordinates[0] + 1, start_coordinates[1]),
                 end_coordinates]
 
-    def _converter(self, character: str) -> int:
-        return self._strtohex[character]
-
     def _decide_corner(self, row: int, col: int) -> str:
-        hex_value: int = self._converter(self._maze[row][col])
-        hex_value_diagonal: int = self._converter(self._maze[row + 1][col + 1])
+        hex_value: int = self._maze[row][col]
+        hex_value_diagonal: int = self._maze[row + 1][col + 1]
         total: int = 0
         if hex_value & Directions.EAST:
             total += 1
@@ -155,7 +148,7 @@ class Renderer:
                     start_coordinates[0] + 1 + row * 2,
                     start_coordinates[1] + 1 + (col * 3))
                 self._move_cursor(place)
-                if self._converter(self._maze[row][col]) & Directions.SOUTH:
+                if self._maze[row][col] & Directions.SOUTH:
                     if row != row_length - 1:
                         if col == 0:
                             self._move_cursor((place[0], place[1] - 1))
@@ -173,7 +166,7 @@ class Renderer:
                     print(end=self._decide_corner(row, col))
                 self._move_cursor((place[0] - 1, place[1] + 2))
 
-                if self._converter(self._maze[row][col]) & Directions.EAST:
+                if self._maze[row][col] & Directions.EAST:
                     print(end=Printable.VLINE)
                     if col != col_length - 1:
                         if row == 0:
@@ -189,20 +182,10 @@ class Renderer:
         print(end=f"\x1B[{coordinates[0]};{coordinates[1]}H")
 
     def render(self) -> None:
-        # Clear the terminal before drawing
-        system('clear')
-        self._load_maze()
-        coordinates: list[tuple[int, int]] = self._render_borders()
+        self._check_terminal_size()
+
+        system("clear")
+        coordinates = self._render_borders()
         self._draw(coordinates[0])
-
-        # Restore the cursor to the right place
-        print(end=f"\x1B[{coordinates[1][0]};{coordinates[1][1]}H")
-
-
-def main() -> None:
-    rnd = Renderer()
-    rnd.render()
-
-
-if __name__ == "__main__":
-    main()
+        self._move_cursor(coordinates[1])
+        sys.stdout.flush()
