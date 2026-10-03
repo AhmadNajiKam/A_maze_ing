@@ -2,10 +2,10 @@ install:
 	uv sync
 
 run:
-	python3 application.py config.txt
+	python3 a_maze_ing.py config.txt
 
 debug:
-	python3 -m pdb application.py config.txt
+	python3 -m pdb a_maze_ing.py config.txt
 
 lint:
 	flake8 . and mypy . \

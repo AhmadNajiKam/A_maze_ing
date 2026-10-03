@@ -2,7 +2,7 @@
 
 import random
 
-from parser import Config
+from .parser import Config
 
 
 class MazeGenerator:
