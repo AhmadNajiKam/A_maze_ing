@@ -8,6 +8,9 @@ dependencies = []
 license = "MIT"
 license-files = ["LICENSE.md"]
 
+[dependency-groups]
+dev = ["flake8", "mypy", "build"]
+
 [tool.uv.build-backend]
 module-root = ""
 module-name = "mazegen"

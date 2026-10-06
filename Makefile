@@ -2,17 +2,19 @@ install:
 	uv sync
 
 run:
-	python3 a_maze_ing.py config.txt
+	uv run python a_maze_ing.py config.txt
 
 debug:
-	python3 -m pdb a_maze_ing.py config.txt
+	uv run python -m pdb a_maze_ing.py config.txt
 
 lint:
-	flake8 . and mypy . \
+	uv run flake8 .
+	uv run mypy . \
 		--warn-return-any --warn-unused-ignores --ignore-missing-imports --disallow-untyped-defs --check-untyped-defs
 
 lint-strict:
-	flake8 . and mypy . --strict
+	uv run flake8 .
+	uv run mypy . --strict
 
 clean:
 	rm -rf __pycache__ .mypy_cache

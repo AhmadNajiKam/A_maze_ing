@@ -67,7 +67,8 @@ class MazeGenerator:
             "1000111", "1000001", "1110111", "0010100", "0010111",
         )
         self._blocked.clear()
-        if self._height < 7 or self._width < 9:
+        pattern_height, pattern_width = len(pattern), len(pattern[0])
+        if self._height < pattern_height or self._width < pattern_width:
             print("Warning: maze too small for the 42 pattern; omitted.")
             return
         entry_x, entry_y = self._config._ENTRY
@@ -75,20 +76,48 @@ class MazeGenerator:
         reserved = {(entry_y, entry_x), (exit_y, exit_x)}
         if not self._config._PERFECT:
             reserved.add((self._height // 2, self._width // 2))
-        centre_r = (self._height - 5) // 2
-        centre_c = (self._width - 7) // 2
-        positions = [(r, c) for r in range(1, self._height - 5)
-                     for c in range(1, self._width - 7)]
-        positions.sort(key=lambda p: abs(p[0] - centre_r)
-                       + abs(p[1] - centre_c))
+            reserved.update({(0, 0), (0, self._width - 1),
+                             (self._height - 1, 0),
+                             (self._height - 1, self._width - 1)})
+        centre_r = (self._height - pattern_height) // 2
+        centre_c = (self._width - pattern_width) // 2
+        positions = [(r, c)
+                     for r in range(self._height - pattern_height + 1)
+                     for c in range(self._width - pattern_width + 1)]
+        positions.sort(key=lambda p: (
+            p[0] in (0, self._height - pattern_height)
+            or p[1] in (0, self._width - pattern_width),
+            abs(p[0] - centre_r) + abs(p[1] - centre_c),
+        ))
         for row, col in positions:
             blocked = {(row + r, col + c)
                        for r, line in enumerate(pattern)
                        for c, value in enumerate(line) if value == "1"}
-            if not (blocked & reserved):
+            if blocked & reserved:
+                continue
+            # Edge placements must leave all ordinary cells connected.
+            start = (entry_y, entry_x)
+            seen = {start}
+            pending = [start]
+            forced_dead_ends = 0
+            while pending:
+                r, c = pending.pop()
+                neighbors = 0
+                for dr, dc, _, _ in self._directions:
+                    cell = (r + dr, c + dc)
+                    if (0 <= cell[0] < self._height
+                            and 0 <= cell[1] < self._width
+                            and cell not in blocked):
+                        neighbors += 1
+                        if cell not in seen:
+                            seen.add(cell)
+                            pending.append(cell)
+                forced_dead_ends += neighbors == 1
+            if (len(seen) == self._height * self._width - len(blocked)
+                    and (self._config._PERFECT or forced_dead_ends <= 2)):
                 self._blocked = blocked
                 return
-        raise ValueError("Cannot place 42 clear of the centre, ENTRY and EXIT")
+        print("Warning: maze too small for the 42 pattern; omitted.")
 
     def _reset(self) -> None:
         """Reset walls and Union-Find, retaining the chosen pattern."""

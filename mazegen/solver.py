@@ -1,18 +1,23 @@
+"""Find a shortest maze route using the original breadth-first search."""
+
 from collections import deque
 
 
 class BFS:
+    """Solve a wall-bit grid using (row, column) endpoint coordinates."""
+
     def __init__(
             self,
             maze: list[list[int]],
             entry: tuple[int, int],
-            exit: tuple[int, int],):
-
+            exit: tuple[int, int],) -> None:
+        """Store the maze and the endpoints to be connected."""
         self.maze = maze
         self.entry = entry
         self.exit = exit
 
     def solve(self) -> str:
+        """Return shortest N/E/S/W directions or raise if no route exists."""
         queue = deque([self.entry])
         visited = {self.entry}
         parent: dict[tuple[int, int], tuple[tuple[int, int], str]] = {}
@@ -41,7 +46,10 @@ class BFS:
 
         return ''.join(path)
 
-    def _neighbors(self, cell: tuple[int, int]) -> list[tuple[tuple[int, int], str]]:
+    def _neighbors(
+        self, cell: tuple[int, int]
+    ) -> list[tuple[tuple[int, int], str]]:
+        """Return in-bounds neighbors reachable through an open wall."""
         row, col = cell
         value = self.maze[row][col]
 
