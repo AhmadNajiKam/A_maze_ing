@@ -19,7 +19,7 @@ def main() -> None:
         maze, solution = generation(config)
         rend = Renderer(
             maze, solution, show_path=True,
-            entry=config._ENTRY, exit=config._EXIT,
+            entry=config.entry, exit=config.exit,
         )
         rend.render()
         while True:
@@ -39,11 +39,11 @@ def main() -> None:
             try:
                 match choice:
                     case 1:
-                        config._SEED += 1
+                        config.seed += 1
                         maze, solution = generation(config)
                         rend = Renderer(
                             maze, solution, show_path=rend._show_path,
-                            entry=config._ENTRY, exit=config._EXIT,
+                            entry=config.entry, exit=config.exit,
                             wall_color=rend._wall_color,
                             path_color=rend._path_color,
                             pattern_color=rend._pattern_color,
@@ -90,13 +90,13 @@ def generation(
     maze: list[list[int]] = maze_gen._generate()
 
     entry_cell = (
-        config._ENTRY[1],
-        config._ENTRY[0],
+        config.entry[1],
+        config.entry[0],
     )
 
     exit_cell = (
-        config._EXIT[1],
-        config._EXIT[0],
+        config.exit[1],
+        config.exit[0],
     )
 
     algo = solver.BFS(
@@ -108,13 +108,13 @@ def generation(
     solution = algo.solve()
 
     with open(
-        config._OUTPUT_FILE, "w", encoding="utf-8", newline="\n"
+        config.output_file, "w", encoding="utf-8", newline="\n"
     ) as file:
         for row in maze:
             file.write("".join(f"{cell:X}" for cell in row) + "\n")
         file.write("\n")
-        file.write(f"{config._ENTRY[0]},{config._ENTRY[1]}\n")
-        file.write(f"{config._EXIT[0]},{config._EXIT[1]}\n")
+        file.write(f"{config.entry[0]},{config.entry[1]}\n")
+        file.write(f"{config.exit[0]},{config.exit[1]}\n")
         file.write(solution + "\n")
 
     return maze, solution

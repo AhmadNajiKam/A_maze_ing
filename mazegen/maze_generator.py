@@ -21,9 +21,9 @@ class MazeGenerator:
             (1, 0, 4, 1), (0, -1, 8, 2),
         )
         self._config = config
-        self._height = config._HEIGHT
-        self._width = config._WIDTH
-        self._rng = random.Random(config._SEED)
+        self._height = config.height
+        self._width = config.width
+        self._rng = random.Random(config.seed)
         self._maze: list[list[int]] = []
         self._blocked: set[tuple[int, int]] = set()
         self._parent: dict[tuple[int, int], tuple[int, int]] = {}
@@ -34,13 +34,13 @@ class MazeGenerator:
     def _generate(self) -> list[list[int]]:
         """Try at most 30 layouts and return a board meeting the checks."""
         self._check_config()
-        self._rng.seed(self._config._SEED)
+        self._rng.seed(self._config.seed)
         self._put_42()
         for _ in range(30):
             self._reset()
             self._sidewinder()
             self._connect()
-            if self._config._PERFECT:
+            if self._config.perfect:
                 return self._maze
             self._braid()
             self._add_loops()
@@ -55,9 +55,9 @@ class MazeGenerator:
         """Reject invalid dimensions, endpoints and out-of-bounds cells."""
         if self._height < 1 or self._width < 1:
             raise ValueError("WIDTH and HEIGHT must be positive")
-        if self._config._ENTRY == self._config._EXIT:
+        if self._config.entry == self._config.exit:
             raise ValueError("ENTRY and EXIT must be different")
-        for x, y in (self._config._ENTRY, self._config._EXIT):
+        for x, y in (self._config.entry, self._config.exit):
             if not (0 <= x < self._width and 0 <= y < self._height):
                 raise ValueError("ENTRY and EXIT must be inside the maze")
 
@@ -71,10 +71,10 @@ class MazeGenerator:
         if self._height < pattern_height or self._width < pattern_width:
             print("Warning: maze too small for the 42 pattern; omitted.")
             return
-        entry_x, entry_y = self._config._ENTRY
-        exit_x, exit_y = self._config._EXIT
+        entry_x, entry_y = self._config.entry
+        exit_x, exit_y = self._config.exit
         reserved = {(entry_y, entry_x), (exit_y, exit_x)}
-        if not self._config._PERFECT:
+        if not self._config.perfect:
             reserved.add((self._height // 2, self._width // 2))
             reserved.update({(0, 0), (0, self._width - 1),
                              (self._height - 1, 0),
@@ -114,7 +114,7 @@ class MazeGenerator:
                             pending.append(cell)
                 forced_dead_ends += neighbors == 1
             if (len(seen) == self._height * self._width - len(blocked)
-                    and (self._config._PERFECT or forced_dead_ends <= 2)):
+                    and (self._config.perfect or forced_dead_ends <= 2)):
                 self._blocked = blocked
                 return
         print("Warning: maze too small for the 42 pattern; omitted.")
@@ -199,7 +199,7 @@ class MazeGenerator:
         if len({self._root(cell) for cell in self._parent}) != 1:
             raise ValueError("The blocked pattern disconnects the maze")
         possible_cycles = len(self._edges) - len(self._parent) + 1
-        if not self._config._PERFECT and possible_cycles < 2:
+        if not self._config.perfect and possible_cycles < 2:
             raise ValueError("This grid is too small or narrow for two loops")
 
     def _is_dead_end(self, cell: tuple[int, int]) -> bool:
