@@ -1,5 +1,6 @@
 """Read keyed maze configuration while retaining the original Config API."""
 
+from os.path import exists, samefile
 from secrets import randbits
 from typing import Any
 
@@ -88,6 +89,11 @@ class Parser:
             if missing:
                 raise ValueError(
                     "missing mandatory keys: " + ", ".join(missing)
+                )
+            if (exists(values["OUTPUT_FILE"])
+                    and samefile(config_file, values["OUTPUT_FILE"])):
+                raise ValueError(
+                    "OUTPUT_FILE must not overwrite the config file"
                 )
             if "SEED" not in values:
                 values["SEED"] = randbits(64)
