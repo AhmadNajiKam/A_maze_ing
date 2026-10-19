@@ -79,8 +79,9 @@ SEED=3
 
 `PERFECT` must be provided explicitly; the supplied configuration selects
 `True`. If `SEED` is omitted, the parser chooses a random 64-bit seed. An
-explicit seed with the same other parameters reproduces the maze. Regeneration
-increments the current seed.
+explicit seed with the same other parameters reproduces the maze. The seed is
+read once at startup and kept in memory for the running session; interactive
+changes never modify the configuration file.
 
 ### Menu and display
 
@@ -99,6 +100,17 @@ initially white. Options 3–5 prompt for a color name (`red`, `green`, `yellow`
 surrounding whitespace is ignored. Invalid colors prompt again, and blank input
 cancels without changing the color. Custom hex colors require a terminal with
 24-bit (true-color) support. Hiding the path keeps both endpoints visible.
+Option 1 opens a regeneration submenu:
+
+1. Generate a new maze (increments the current seed).
+2. Regenerate using a seed.
+
+The seeded choice prompts with `Seed [3] (Enter to keep current): `, where the
+number in brackets is the active seed, initially loaded from the configuration.
+Enter a nonnegative decimal integer to update the seed in memory, or leave the
+input blank to reuse it and reproduce the same maze. Invalid input prompts
+again. Subsequent seed prompts default to the updated value.
+
 Regeneration rewrites the output file and retains visibility and all three
 color settings. EOF and Ctrl-C exit cleanly.
 

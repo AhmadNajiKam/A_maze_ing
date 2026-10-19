@@ -78,11 +78,13 @@ class PatternPlacer:
                 if (0 <= row < self._config.height
                         and 0 <= column < self._config.width
                         and neighbor not in blocked):
-                    neighbor_count += 1
+                    if not self._config.perfect:
+                        neighbor_count += 1
                     if neighbor not in seen:
                         seen.add(neighbor)
                         pending.append(neighbor)
-            forced_dead_ends += neighbor_count == 1
+            if not self._config.perfect:
+                forced_dead_ends += neighbor_count == 1
         ordinary_cell_count = (
             self._config.height * self._config.width - len(blocked)
         )

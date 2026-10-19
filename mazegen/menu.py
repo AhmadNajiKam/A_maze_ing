@@ -10,3 +10,11 @@ MENU_OPTIONS = (
 )
 MENU_PROMPT = "Choice (1-6): "
 INVALID_CHOICE_MESSAGE = "Please enter a number from 1 to 6."
+
+REGENERATION_OPTIONS = (
+    "1. Generate a new maze",
+    "2. Regenerate using a seed",
+)
+REGENERATION_PROMPT = "Choice (1-2): "
+INVALID_REGENERATION_MESSAGE = "Please enter a number from 1 to 2."
+SEED_PROMPT = "Seed [{seed}] (Enter to keep current): "

@@ -6,7 +6,10 @@ import sys
 from mazegen import Config, DisplaySettings, MazeGenerator, Parser, Renderer
 from mazegen.colors import parse_color
 from mazegen.exporter import export_maze
-from mazegen.menu import INVALID_CHOICE_MESSAGE, MENU_OPTIONS, MENU_PROMPT
+from mazegen.menu import (
+    INVALID_CHOICE_MESSAGE, INVALID_REGENERATION_MESSAGE, MENU_OPTIONS,
+    MENU_PROMPT, REGENERATION_OPTIONS, REGENERATION_PROMPT, SEED_PROMPT,
+)
 from mazegen.solver import BFS
 
 
@@ -41,6 +44,28 @@ def choose_color(renderer: Renderer, choice: str) -> None:
         return
 
 
+def choose_seed(current_seed: int) -> int:
+    """Choose a new seed or reuse/override the active seed in memory."""
+    print("\n".join(REGENERATION_OPTIONS))
+    while True:
+        choice = input(REGENERATION_PROMPT).strip()
+        if choice == "1":
+            return current_seed + 1
+        if choice == "2":
+            break
+        print(INVALID_REGENERATION_MESSAGE)
+    while True:
+        value = input(SEED_PROMPT.format(seed=current_seed)).strip()
+        if not value:
+            return current_seed
+        if value.isdecimal():
+            try:
+                return int(value)
+            except ValueError:
+                pass
+        print("Seed must be a nonnegative decimal integer.")
+
+
 def run_menu(config: Config, renderer: Renderer) -> None:
     """Handle user commands while preserving renderer preferences."""
     while True:
@@ -50,7 +75,7 @@ def run_menu(config: Config, renderer: Renderer) -> None:
             return
         try:
             if choice == "1":
-                config.seed += 1
+                config.seed = choose_seed(config.seed)
                 maze, solution = generate_and_export(config)
                 renderer.replace_maze(
                     maze, solution, entry=config.entry_cell,

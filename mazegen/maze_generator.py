@@ -20,11 +20,6 @@ class MazeGenerator:
         """Store settings and a local random source for reproducible mazes."""
         self._config = config
         self._random = random.Random(config.seed)
-        self._blocked_cells: set[Cell] = set()
-        self._ordinary_cells: dict[Cell, None] = {}
-        self._neighbor_pairs: list[tuple[Cell, Cell]] = []
-        self._components = DisjointSet([])
-        self._cycle_count = 0
 
     def generate(self) -> list[list[int]]:
         """Return wall-bit rows, or raise if constraints cannot be met."""
@@ -52,14 +47,14 @@ class MazeGenerator:
         """Close walls and reset connectivity, retaining the chosen pattern."""
         self._grid = MazeGrid.closed(self._config.width, self._config.height)
         # Preserve row-major iteration so a seed has stable random choices.
-        self._ordinary_cells = {
+        self._ordinary_cells: dict[Cell, None] = {
             (row, column): None
             for row in range(self._grid.height)
             for column in range(self._grid.width)
             if (row, column) not in self._blocked_cells
         }
         self._components = DisjointSet(self._ordinary_cells)
-        self._neighbor_pairs = [
+        self._neighbor_pairs: list[tuple[Cell, Cell]] = [
             (cell, neighbor) for cell in self._ordinary_cells
             for neighbor in (EAST.neighbor(cell), SOUTH.neighbor(cell))
             if neighbor in self._ordinary_cells
@@ -78,7 +73,6 @@ class MazeGenerator:
             for column in range(self._grid.width):
                 cell = (row, column)
                 if cell not in self._ordinary_cells:
-                    north_candidates.clear()
                     continue
                 if NORTH.neighbor(cell) in self._ordinary_cells:
                     north_candidates.append(cell)
@@ -107,13 +101,15 @@ class MazeGenerator:
             self._join_components(first, second)
         if self._components.component_count != 1:
             raise ValueError("The blocked pattern disconnects the maze")
-        # A connected graph has E - V + 1 independent cycles available.
-        possible_cycles = (
-            len(self._neighbor_pairs) - len(self._ordinary_cells) + 1
-        )
-        if (not self._config.perfect
-                and possible_cycles < MIN_INDEPENDENT_CYCLES):
-            raise ValueError("This grid is too small or narrow for two loops")
+        if not self._config.perfect:
+            # A connected graph has E - V + 1 independent cycles available.
+            possible_cycles = (
+                len(self._neighbor_pairs) - len(self._ordinary_cells) + 1
+            )
+            if possible_cycles < MIN_INDEPENDENT_CYCLES:
+                raise ValueError(
+                    "This grid is too small or narrow for two loops",
+                )
 
     def _closed_neighbors(self, cell: Cell) -> list[Cell]:
         """List ordinary neighbors that still have a separating wall."""
