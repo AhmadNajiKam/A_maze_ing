@@ -1,105 +1,86 @@
-"""Read keyed maze configuration while retaining the original Config API."""
+"""Read and validate KEY=VALUE maze configuration files."""
 
 from os.path import exists, samefile
 from secrets import randbits
-from typing import Any
 
+from .config import Config
+from .directions import Position
 
-class Config:
-    """Store width, height, endpoints, output, mode and seed in that order."""
-
-    def __init__(self, config_array: list[Any]) -> None:
-        """Store the seven values supplied by the parser or reusable client."""
-        self._WIDTH: int = config_array[0]
-        self._HEIGHT: int = config_array[1]
-        self._ENTRY: tuple[int, int] = config_array[2]
-        self._EXIT: tuple[int, int] = config_array[3]
-        self._OUTPUT_FILE: str = config_array[4]
-        self._PERFECT: bool = config_array[5]
-        self._SEED: int = config_array[6]
+RANDOM_SEED_BITS = 64
+REQUIRED_KEYS = {"WIDTH", "HEIGHT", "ENTRY", "EXIT", "OUTPUT_FILE", "PERFECT"}
+SUPPORTED_KEYS = REQUIRED_KEYS | {"SEED"}
 
 
 class Parser:
-    """Validate KEY=VALUE configuration files and report readable errors."""
+    """Convert a configuration file to typed settings with readable errors."""
 
-    def _parse_engine(self, key: str, value: str) -> Any:
-        """Convert one supported value; return -1 for an invalid value/key."""
-        match key:
-            case "WIDTH" | "HEIGHT":
-                if value.isdigit() == 0:
-                    return -1
-                else:
-                    return int(value)
-            case "ENTRY" | "EXIT":
-                values: list[str] = value.split(",")
-                if (len(values) != 2 or values[0].isdigit() == 0
-                        or values[1].isdigit() == 0):
-                    return -1
-                else:
-                    return (int(values[0]), int(values[1]))
-            case "PERFECT":
-                if value.lower() == "true":
-                    return True
-                elif value.lower() == "false":
-                    return False
-                return -1
-            case "SEED":
-                if value.isdigit() == 0:
-                    return -1
-                else:
-                    return int(value)
-            case "OUTPUT_FILE":
-                return value if value else -1
-            case _:
-                return -1
-
-    def _get_key_value(self, line: str) -> tuple[str, str]:
-        """Return a normalized pair or raise ValueError for invalid syntax."""
-        unnormalized_line: list[str] = line.strip().split("=")
-        if len(unnormalized_line) != 2:
-            raise ValueError("expected one KEY=VALUE pair")
-        key: str = unnormalized_line[0].strip().upper()
-        value: str = unnormalized_line[1].strip()
-        if self._parse_engine(key, value) == -1:
-            raise ValueError(f"invalid key or value: {key}={value}")
-        return (key, value)
-
-    def _read_config(self, config_file: str) -> Config | None:
-        """Read a file into Config; print an error and return None on failure.
-
-        Keys may appear in any order. SEED is optional; all six subject keys
-        are required. Comments and blank lines do not contribute values.
-        """
-        required = ("WIDTH", "HEIGHT", "ENTRY", "EXIT", "OUTPUT_FILE",
-                    "PERFECT")
+    def parse(self, filename: str) -> Config:
+        """Read settings, preserving filename and line context in errors."""
         try:
-            with open(config_file, "r", encoding="utf-8") as file:
-                values: dict[str, Any] = {}
-                for number, line in enumerate(file, 1):
-                    if not line.strip() or line.lstrip().startswith("#"):
-                        continue
-                    try:
-                        key, value = self._get_key_value(line)
-                        if key in values:
-                            raise ValueError(f"duplicate key: {key}")
-                        values[key] = self._parse_engine(key, value)
-                    except ValueError as error:
-                        raise ValueError(f"line {number}: {error}") from error
-            missing = [key for key in required if key not in values]
+            values = self._read_values(filename)
+            missing = sorted(REQUIRED_KEYS - values.keys())
             if missing:
                 raise ValueError(
-                    "missing mandatory keys: " + ", ".join(missing)
+                    "missing mandatory keys: " + ", ".join(missing),
                 )
-            if (exists(values["OUTPUT_FILE"])
-                    and samefile(config_file, values["OUTPUT_FILE"])):
+            output_file = values["OUTPUT_FILE"]
+            if exists(output_file) and samefile(filename, output_file):
                 raise ValueError(
-                    "OUTPUT_FILE must not overwrite the config file"
+                    "OUTPUT_FILE must not overwrite the config file",
                 )
-            if "SEED" not in values:
-                values["SEED"] = randbits(64)
-            config_array = [values[key] for key in required]
-            config_array.append(values["SEED"])
-            return Config(config_array)
+            config = Config(
+                width=int(values["WIDTH"]),
+                height=int(values["HEIGHT"]),
+                entry=self._parse_position(values["ENTRY"]),
+                exit=self._parse_position(values["EXIT"]),
+                output_file=output_file,
+                perfect=values["PERFECT"].lower() == "true",
+                seed=(int(values["SEED"]) if "SEED" in values
+                      else randbits(RANDOM_SEED_BITS)),
+            )
+            config.validate()
+            return config
         except (OSError, UnicodeError, ValueError) as error:
-            print(f"Error: {config_file}: {error}")
-            return None
+            raise ValueError(f"{filename}: {error}") from error
+
+    def _read_values(self, filename: str) -> dict[str, str]:
+        """Normalize keys and reject malformed or duplicate entries."""
+        values: dict[str, str] = {}
+        with open(filename, encoding="utf-8") as file:
+            for line_number, line in enumerate(file, 1):
+                if not line.strip() or line.lstrip().startswith("#"):
+                    continue
+                try:
+                    if line.count("=") != 1:
+                        raise ValueError("expected one KEY=VALUE pair")
+                    key, value = (part.strip() for part in line.split("="))
+                    key = key.upper()
+                    if key not in SUPPORTED_KEYS:
+                        raise ValueError(f"unknown key: {key}")
+                    if key in values:
+                        raise ValueError(f"duplicate key: {key}")
+                    self._validate_value(key, value)
+                    values[key] = value
+                except ValueError as error:
+                    raise ValueError(f"line {line_number}: {error}") from error
+        return values
+
+    def _validate_value(self, key: str, value: str) -> None:
+        """Check syntax without mixing values and error sentinels."""
+        if key in {"WIDTH", "HEIGHT", "SEED"}:
+            if not value.isdecimal():
+                raise ValueError(f"{key} must contain decimal digits")
+        elif key in {"ENTRY", "EXIT"}:
+            parts = value.split(",")
+            if len(parts) != 2 or not all(part.isdecimal() for part in parts):
+                raise ValueError(f"{key} must be nonnegative coordinates x,y")
+        elif key == "PERFECT":
+            if value.lower() not in {"true", "false"}:
+                raise ValueError("PERFECT must be True or False")
+        elif not value:
+            raise ValueError("OUTPUT_FILE must not be empty")
+
+    def _parse_position(self, value: str) -> Position:
+        """Convert an already syntax-checked external x,y position."""
+        x, y = value.split(",")
+        return int(x), int(y)

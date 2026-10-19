@@ -3,121 +3,97 @@
 
 import sys
 
-from mazegen import MazeGenerator, Parser, Config, solver, Renderer
+from mazegen import Config, DisplaySettings, MazeGenerator, Parser, Renderer
+from mazegen.colors import parse_color
+from mazegen.exporter import export_maze
+from mazegen.menu import INVALID_CHOICE_MESSAGE, MENU_OPTIONS, MENU_PROMPT
+from mazegen.solver import BFS
+
+
+def generate_and_export(config: Config) -> tuple[list[list[int]], str]:
+    """Coordinate generation, shortest-path solving, and file export."""
+    maze = MazeGenerator(config).generate()
+    solution = BFS(maze, config.entry_cell, config.exit_cell).solve()
+    export_maze(config, maze, solution)
+    return maze, solution
+
+
+def choose_color(renderer: Renderer, choice: str) -> None:
+    """Prompt for a named or custom color; blank input keeps the settings."""
+    target, field = {
+        "3": ("wall", "wall_color"),
+        "4": ("path", "path_color"),
+        "5": ("42 pattern", "pattern_color"),
+    }[choice]
+    print("Colors: red, green, yellow, blue,")
+    print("magenta, cyan, white" + (", bright_white" if choice == "3" else ""))
+    print("Or enter #RRGGBB (e.g. #FF8800).")
+    while True:
+        value = input(f"{target} color (blank cancels): ").strip()
+        if not value:
+            return
+        try:
+            color = parse_color(value, background=choice != "3")
+        except ValueError as error:
+            print(error)
+            continue
+        setattr(renderer.settings, field, color)
+        return
+
+
+def run_menu(config: Config, renderer: Renderer) -> None:
+    """Handle user commands while preserving renderer preferences."""
+    while True:
+        print("\n".join(MENU_OPTIONS))
+        choice = input(MENU_PROMPT).strip()
+        if choice == "6":
+            return
+        try:
+            if choice == "1":
+                config.seed += 1
+                maze, solution = generate_and_export(config)
+                renderer.replace_maze(
+                    maze, solution, entry=config.entry_cell,
+                    exit=config.exit_cell,
+                )
+            elif choice == "2":
+                renderer.toggle_path()
+            elif choice in {"3", "4", "5"}:
+                choose_color(renderer, choice)
+            else:
+                print(INVALID_CHOICE_MESSAGE)
+                continue
+            renderer.render()
+        except (OSError, ValueError, MemoryError, OverflowError) as error:
+            report_error(error)
+
+
+def report_error(error: Exception) -> None:
+    """Keep startup and menu error messages consistent."""
+    if isinstance(error, OverflowError):
+        print("Error: WIDTH or HEIGHT is too large for this system.")
+    else:
+        print(f"Error: {error}")
 
 
 def main() -> None:
-    """Read the sole config argument and run the six-choice terminal menu."""
+    """Read the configuration argument and launch the application."""
     if len(sys.argv) != 2:
         print("Usage: python3 a_maze_ing.py config.txt")
         return
     try:
-        parser = Parser()
-        config: Config | None = parser._read_config(sys.argv[1])
-        if config is None:
-            return
-        maze, solution = generation(config)
-        rend = Renderer(
-            maze, solution, show_path=True,
-            entry=config._ENTRY, exit=config._EXIT,
+        config = Parser().parse(sys.argv[1])
+        maze, solution = generate_and_export(config)
+        renderer = Renderer(
+            maze, solution, entry=config.entry_cell, exit=config.exit_cell,
+            settings=DisplaySettings(show_path=True),
         )
-        rend.render()
-        while True:
-            print(
-                """1. Re-generate maze
-2. Show/Hide shortest path
-3. Change maze wall colors
-4. Change solution path color
-5. Change 42 pattern color
-6. Exit"""
-            )
-            try:
-                choice = int(input("Choice (1-6): "))
-            except ValueError:
-                print("Please enter a number from 1 to 6.")
-                continue
-            try:
-                match choice:
-                    case 1:
-                        config._SEED += 1
-                        maze, solution = generation(config)
-                        rend = Renderer(
-                            maze, solution, show_path=rend._show_path,
-                            entry=config._ENTRY, exit=config._EXIT,
-                            wall_color=rend._wall_color,
-                            path_color=rend._path_color,
-                            pattern_color=rend._pattern_color,
-                        )
-                        rend.render()
-                    case 2:
-                        rend.toggle_path()
-                        rend.render()
-                    case 3:
-                        rend.randomize_color()
-                        rend.render()
-                    case 4:
-                        rend.rotate_path_color()
-                        rend.render()
-                    case 5:
-                        rend.rotate_pattern_color()
-                        rend.render()
-                    case 6:
-                        break
-                    case _:
-                        print("Please enter a number from 1 to 6.")
-            except OverflowError:
-                print("Error: WIDTH or HEIGHT is too large for this system.")
-            except (OSError, ValueError, MemoryError) as error:
-                print(f"Error: {error}")
+        renderer.render()
+        run_menu(config, renderer)
     except (EOFError, KeyboardInterrupt):
         print("\nExiting.")
-    except OverflowError:
-        print("Error: WIDTH or HEIGHT is too large for this system.")
-    except (OSError, ValueError, MemoryError) as error:
-        print(f"Error: {error}")
-
-
-def generation(
-    config: Config,
-) -> tuple[list[list[int]], str]:
-    """Generate, solve and write the exact subject format; return both values.
-
-    Config endpoints use (x, y). BFS endpoints use (row, column).
-    Generation, solving and file errors propagate to main() for reporting.
-    """
-    maze_gen = MazeGenerator(config)
-
-    maze: list[list[int]] = maze_gen._generate()
-
-    entry_cell = (
-        config._ENTRY[1],
-        config._ENTRY[0],
-    )
-
-    exit_cell = (
-        config._EXIT[1],
-        config._EXIT[0],
-    )
-
-    algo = solver.BFS(
-        maze,
-        entry_cell,
-        exit_cell,
-    )
-
-    solution = algo.solve()
-
-    with open(
-        config._OUTPUT_FILE, "w", encoding="utf-8", newline="\n"
-    ) as file:
-        for row in maze:
-            file.write("".join(f"{cell:X}" for cell in row) + "\n")
-        file.write("\n")
-        file.write(f"{config._ENTRY[0]},{config._ENTRY[1]}\n")
-        file.write(f"{config._EXIT[0]},{config._EXIT[1]}\n")
-        file.write(solution + "\n")
-
-    return maze, solution
+    except (OSError, ValueError, MemoryError, OverflowError) as error:
+        report_error(error)
 
 
 if __name__ == "__main__":

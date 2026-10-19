@@ -1,6 +1,9 @@
-"""Find a shortest maze route using the original breadth-first search."""
+"""Find a shortest maze route using breadth-first search."""
 
 from collections import deque
+
+from .directions import Cell
+from .grid import MazeGrid
 
 
 class BFS:
@@ -9,10 +12,12 @@ class BFS:
     def __init__(
             self,
             maze: list[list[int]],
-            entry: tuple[int, int],
-            exit: tuple[int, int],) -> None:
+            entry: Cell,
+            exit: Cell,) -> None:
         """Store the maze and the endpoints to be connected."""
-        self.maze = maze
+        self._grid = MazeGrid(maze)
+        if not self._grid.contains(entry) or not self._grid.contains(exit):
+            raise ValueError("Solver endpoints must be inside the maze")
         self.entry = entry
         self.exit = exit
 
@@ -20,13 +25,13 @@ class BFS:
         """Return shortest N/E/S/W directions or raise if no route exists."""
         queue = deque([self.entry])
         visited = {self.entry}
-        parent: dict[tuple[int, int], tuple[tuple[int, int], str]] = {}
+        parent: dict[Cell, tuple[Cell, str]] = {}
 
         while queue:
             current = queue.popleft()
             if current == self.exit:
                 break
-            for cell, direction in self._neighbors(current):
+            for cell, direction in self._grid.reachable_neighbors(current):
                 if cell not in visited:
                     visited.add(cell)
                     parent[cell] = current, direction
@@ -45,29 +50,3 @@ class BFS:
         path.reverse()
 
         return ''.join(path)
-
-    def _neighbors(
-        self, cell: tuple[int, int]
-    ) -> list[tuple[tuple[int, int], str]]:
-        """Return in-bounds neighbors reachable through an open wall."""
-        row, col = cell
-        value = self.maze[row][col]
-
-        height = len(self.maze)
-        width = len(self.maze[0])
-
-        neighbors = []
-
-        if row > 0 and not value & 1:
-            neighbors.append(((row - 1, col), 'N'))
-
-        if col < width - 1 and not value & 2:
-            neighbors.append(((row, col + 1), 'E'))
-
-        if row < height - 1 and not value & 4:
-            neighbors.append(((row + 1, col), 'S'))
-
-        if col > 0 and not value & 8:
-            neighbors.append(((row, col - 1), 'W'))
-
-        return neighbors

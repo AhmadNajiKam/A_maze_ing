@@ -1,25 +1,32 @@
-"""Reuse the maze generator, configuration and original BFS solver.
+"""Generate and solve mazes without launching the terminal application.
 
-Basic example (coordinates in Config are x,y; BFS uses row,column)::
+    from mazegen import BFS, Config, MazeGenerator
 
-    from mazegen import Config, MazeGenerator, solver
+    config = Config(
+        width=20, height=15, entry=(0, 0), exit=(19, 14),
+        output_file="maze.txt", perfect=True, seed=3,
+    )
+    maze = MazeGenerator(config).generate()
+    solution = BFS(maze, config.entry_cell, config.exit_cell).solve()
 
-    config = Config([20, 15, (0, 0), (19, 14), "maze.txt", True, 3])
-    maze = MazeGenerator(config)._generate()
-    solution = solver.BFS(maze, (0, 0), (14, 19)).solve()
-
-The Config list is [width, height, entry, exit, output_file, perfect, seed].
-Change size, endpoints and seed there to supply custom parameters. The return
-value of _generate() is a row-major list of wall-bit integers: N=1, E=2, S=4,
-W=8; set bits are closed walls. solve() returns shortest N/E/S/W directions.
-Generation itself does not write files or launch the terminal application.
-Invalid or impossible parameters and unreachable solutions raise ValueError.
-See the included MIT license for reuse and distribution terms.
+Config and export endpoints use (x, y); grid, solver, and renderer coordinates
+use (row, column). Config.entry_cell and Config.exit_cell convert between them.
+Wall bits are N=1, E=2, S=4, W=8; a set bit means closed. Invalid or impossible
+settings and unreachable exits raise ValueError. Parser.parse() raises errors
+with filename context. Generation itself performs no file or terminal I/O,
+apart from warning when the 42 pattern cannot be placed.
 """
 
+from .config import Config
+from .directions import Wall
+from .grid import MazeGrid
 from .maze_generator import MazeGenerator
-from .parser import Config, Parser
-from .renderer import Renderer
+from .parser import Parser
+from .renderer import DisplaySettings, Renderer
+from .solver import BFS
 from . import solver
 
-__all__ = ["MazeGenerator", "Config", "Parser", "Renderer", "solver"]
+__all__ = [
+    "BFS", "Config", "DisplaySettings", "MazeGenerator", "MazeGrid", "Parser",
+    "Renderer", "Wall", "solver",
+]

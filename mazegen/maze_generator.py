@@ -1,282 +1,194 @@
-"""Generate connected perfect or braided mazes using four wall bits."""
+"""Coordinate Sidewinder, connectivity repair, and constrained braiding."""
 
 import random
 
-from .parser import Config
+from .config import Config
+from .directions import Cell, DIRECTIONS, EAST, NORTH, SOUTH, Wall
+from .disjoint_set import DisjointSet
+from .generation_rules import (
+    FORBIDDEN_OPEN_AREA_SIZE, MAX_DEAD_ENDS, MAX_GENERATION_ATTEMPTS,
+    MIN_INDEPENDENT_CYCLES,
+)
+from .grid import MazeGrid
+from .pattern import PatternPlacer
 
 
 class MazeGenerator:
-    """Keep a Sidewinder tree, then optionally add constrained loops.
-
-    Config entry/exit coordinates use (x, y). Generated arrays use [y][x].
-    _generate() raises ValueError for invalid or unsuccessful parameters;
-    the application's error handler should display that message.
-    """
+    """Generate a connected grid using (row, column) coordinates."""
 
     def __init__(self, config: Config) -> None:
-        """Store configuration and initialise generation state."""
-        # Row offset, column offset, current wall, opposite wall.
-        self._directions = (
-            (-1, 0, 1, 4), (0, 1, 2, 8),
-            (1, 0, 4, 1), (0, -1, 8, 2),
-        )
+        """Store settings and a local random source for reproducible mazes."""
         self._config = config
-        self._height = config._HEIGHT
-        self._width = config._WIDTH
-        self._rng = random.Random(config._SEED)
-        self._maze: list[list[int]] = []
-        self._blocked: set[tuple[int, int]] = set()
-        self._parent: dict[tuple[int, int], tuple[int, int]] = {}
-        self._size: dict[tuple[int, int], int] = {}
-        self._edges: list[tuple[tuple[int, int], tuple[int, int]]] = []
-        self._cycles = 0
+        self._random = random.Random(config.seed)
+        self._blocked_cells: set[Cell] = set()
+        self._ordinary_cells: dict[Cell, None] = {}
+        self._neighbor_pairs: list[tuple[Cell, Cell]] = []
+        self._components = DisjointSet([])
+        self._cycle_count = 0
 
-    def _generate(self) -> list[list[int]]:
-        """Try at most 30 layouts and return a board meeting the checks."""
-        self._check_config()
-        self._rng.seed(self._config._SEED)
-        self._put_42()
-        for _ in range(30):
-            self._reset()
-            self._sidewinder()
-            self._connect()
-            if self._config._PERFECT:
-                return self._maze
-            self._braid()
-            self._add_loops()
-            if self._playable():
-                return self._maze
+    def generate(self) -> list[list[int]]:
+        """Return wall-bit rows, or raise if constraints cannot be met."""
+        self._config.validate()
+        self._random.seed(self._config.seed)
+        self._blocked_cells = PatternPlacer(self._config).place()
+        for _ in range(MAX_GENERATION_ATTEMPTS):
+            self._reset_layout()
+            self._carve_sidewinder_runs()
+            self._connect_components()
+            if self._config.perfect:
+                return self._grid.cells
+            self._braid_dead_ends()
+            self._ensure_minimum_cycles()
+            if self._meets_braiding_rules():
+                return self._grid.cells
         raise ValueError(
-            "Could not build a board with two loops and at most two "
-            "dead ends after 30 attempts. Try another seed or a larger size."
+            f"Could not build a board with {MIN_INDEPENDENT_CYCLES} loops "
+            f"and at most {MAX_DEAD_ENDS} dead ends after "
+            f"{MAX_GENERATION_ATTEMPTS} attempts. "
+            "Try another seed or a larger size."
         )
 
-    def _check_config(self) -> None:
-        """Reject invalid dimensions, endpoints and out-of-bounds cells."""
-        if self._height < 1 or self._width < 1:
-            raise ValueError("WIDTH and HEIGHT must be positive")
-        if self._config._ENTRY == self._config._EXIT:
-            raise ValueError("ENTRY and EXIT must be different")
-        for x, y in (self._config._ENTRY, self._config._EXIT):
-            if not (0 <= x < self._width and 0 <= y < self._height):
-                raise ValueError("ENTRY and EXIT must be inside the maze")
+    def _reset_layout(self) -> None:
+        """Close walls and reset connectivity, retaining the chosen pattern."""
+        self._grid = MazeGrid.closed(self._config.width, self._config.height)
+        # Preserve row-major iteration so a seed has stable random choices.
+        self._ordinary_cells = {
+            (row, column): None
+            for row in range(self._grid.height)
+            for column in range(self._grid.width)
+            if (row, column) not in self._blocked_cells
+        }
+        self._components = DisjointSet(self._ordinary_cells)
+        self._neighbor_pairs = [
+            (cell, neighbor) for cell in self._ordinary_cells
+            for neighbor in (EAST.neighbor(cell), SOUTH.neighbor(cell))
+            if neighbor in self._ordinary_cells
+        ]
+        self._cycle_count = 0
 
-    def _put_42(self) -> None:
-        """Place 42 near the centre without blocking reserved cells."""
-        pattern = (
-            "1000111", "1000001", "1110111", "0010100", "0010111",
-        )
-        self._blocked.clear()
-        pattern_height, pattern_width = len(pattern), len(pattern[0])
-        if self._height < pattern_height or self._width < pattern_width:
-            print("Warning: maze too small for the 42 pattern; omitted.")
-            return
-        entry_x, entry_y = self._config._ENTRY
-        exit_x, exit_y = self._config._EXIT
-        reserved = {(entry_y, entry_x), (exit_y, exit_x)}
-        if not self._config._PERFECT:
-            reserved.add((self._height // 2, self._width // 2))
-            reserved.update({(0, 0), (0, self._width - 1),
-                             (self._height - 1, 0),
-                             (self._height - 1, self._width - 1)})
-        centre_r = (self._height - pattern_height) // 2
-        centre_c = (self._width - pattern_width) // 2
-        positions = [(r, c)
-                     for r in range(self._height - pattern_height + 1)
-                     for c in range(self._width - pattern_width + 1)]
-        positions.sort(key=lambda p: (
-            p[0] in (0, self._height - pattern_height)
-            or p[1] in (0, self._width - pattern_width),
-            abs(p[0] - centre_r) + abs(p[1] - centre_c),
-        ))
-        for row, col in positions:
-            blocked = {(row + r, col + c)
-                       for r, line in enumerate(pattern)
-                       for c, value in enumerate(line) if value == "1"}
-            if blocked & reserved:
-                continue
-            # Edge placements must leave all ordinary cells connected.
-            start = (entry_y, entry_x)
-            seen = {start}
-            pending = [start]
-            forced_dead_ends = 0
-            while pending:
-                r, c = pending.pop()
-                neighbors = 0
-                for dr, dc, _, _ in self._directions:
-                    cell = (r + dr, c + dc)
-                    if (0 <= cell[0] < self._height
-                            and 0 <= cell[1] < self._width
-                            and cell not in blocked):
-                        neighbors += 1
-                        if cell not in seen:
-                            seen.add(cell)
-                            pending.append(cell)
-                forced_dead_ends += neighbors == 1
-            if (len(seen) == self._height * self._width - len(blocked)
-                    and (self._config._PERFECT or forced_dead_ends <= 2)):
-                self._blocked = blocked
-                return
-        print("Warning: maze too small for the 42 pattern; omitted.")
+    def _join_components(self, first: Cell, second: Cell) -> None:
+        """Carve a passage only when it joins separate components."""
+        if self._components.union(first, second):
+            self._grid.open_passage(first, second)
 
-    def _reset(self) -> None:
-        """Reset walls and Union-Find, retaining the chosen pattern."""
-        self._maze = [[15] * self._width for _ in range(self._height)]
-        self._parent = {(r, c): (r, c)
-                        for r in range(self._height)
-                        for c in range(self._width)
-                        if (r, c) not in self._blocked}
-        self._size = {cell: 1 for cell in self._parent}
-        self._edges = [(a, b) for a in self._parent
-                       for b in ((a[0], a[1] + 1), (a[0] + 1, a[1]))
-                       if b in self._parent]
-        self._cycles = 0
-
-    def _root(self, cell: tuple[int, int]) -> tuple[int, int]:
-        """Find a component representative using path compression."""
-        if self._parent[cell] != cell:
-            self._parent[cell] = self._root(self._parent[cell])
-        return self._parent[cell]
-
-    def _wall_pair(
-        self, a: tuple[int, int], b: tuple[int, int]
-    ) -> tuple[int, int]:
-        """Return the two wall bits separating adjacent cells."""
-        offset = (b[0] - a[0], b[1] - a[1])
-        for dr, dc, wall, opposite in self._directions:
-            if offset == (dr, dc):
-                return wall, opposite
-        raise ValueError("Can only connect orthogonally adjacent cells")
-
-    def _open_wall(self, a: tuple[int, int], b: tuple[int, int]) -> None:
-        """Clear both sides of a shared wall between ordinary cells."""
-        wall, opposite = self._wall_pair(a, b)
-        self._maze[a[0]][a[1]] &= ~wall
-        self._maze[b[0]][b[1]] &= ~opposite
-
-    def _carve(self, a: tuple[int, int], b: tuple[int, int]) -> None:
-        """Join distinct components without creating a cycle."""
-        ra, rb = self._root(a), self._root(b)
-        if ra == rb:
-            return
-        self._open_wall(a, b)
-        if self._size[ra] < self._size[rb]:
-            ra, rb = rb, ra
-        self._parent[rb] = ra
-        self._size[ra] += self._size[rb]
-
-    def _sidewinder(self) -> None:
-        """Create horizontal runs with one northward selection per run."""
-        for r in range(self._height):
-            north: list[tuple[int, int]] = []
-            for c in range(self._width):
-                if (r, c) not in self._parent:
-                    north.clear()
+    def _carve_sidewinder_runs(self) -> None:
+        """Build eastward runs and select one northward passage per run."""
+        for row in range(self._grid.height):
+            north_candidates: list[Cell] = []
+            for column in range(self._grid.width):
+                cell = (row, column)
+                if cell not in self._ordinary_cells:
+                    north_candidates.clear()
                     continue
-                if (r - 1, c) in self._parent:
-                    north.append((r, c))
-                east_blocked = (r, c + 1) not in self._parent
+                if NORTH.neighbor(cell) in self._ordinary_cells:
+                    north_candidates.append(cell)
+                east_neighbor = EAST.neighbor(cell)
+                east_blocked = east_neighbor not in self._ordinary_cells
                 close_run = east_blocked or (
-                    bool(north) and self._rng.choice((True, False))
+                    bool(north_candidates)
+                    and self._random.choice((True, False))
                 )
                 if close_run:
-                    self._finish_run(north)
+                    self._finish_run(north_candidates)
                 else:
-                    self._carve((r, c), (r, c + 1))
+                    self._join_components(cell, east_neighbor)
 
-    def _finish_run(self, north: list[tuple[int, int]]) -> None:
-        """Try one northward connection, then clear the run candidates."""
-        if north:
-            r, c = self._rng.choice(north)
-            self._carve((r, c), (r - 1, c))
-        north.clear()
+    def _finish_run(self, north_candidates: list[Cell]) -> None:
+        """Try one northward connection, then start a new horizontal run."""
+        if north_candidates:
+            cell = self._random.choice(north_candidates)
+            self._join_components(cell, NORTH.neighbor(cell))
+        north_candidates.clear()
 
-    def _connect(self) -> None:
-        """Complete the spanning tree using shuffled neighboring pairs."""
-        self._rng.shuffle(self._edges)
-        for a, b in self._edges:
-            self._carve(a, b)
-        if len({self._root(cell) for cell in self._parent}) != 1:
+    def _connect_components(self) -> None:
+        """Complete a spanning tree around the blocked pattern cells."""
+        self._random.shuffle(self._neighbor_pairs)
+        for first, second in self._neighbor_pairs:
+            self._join_components(first, second)
+        if self._components.component_count != 1:
             raise ValueError("The blocked pattern disconnects the maze")
-        possible_cycles = len(self._edges) - len(self._parent) + 1
-        if not self._config._PERFECT and possible_cycles < 2:
+        # A connected graph has E - V + 1 independent cycles available.
+        possible_cycles = (
+            len(self._neighbor_pairs) - len(self._ordinary_cells) + 1
+        )
+        if (not self._config.perfect
+                and possible_cycles < MIN_INDEPENDENT_CYCLES):
             raise ValueError("This grid is too small or narrow for two loops")
 
-    def _is_dead_end(self, cell: tuple[int, int]) -> bool:
-        """Report whether exactly one of the four passages is open."""
-        value = self._maze[cell[0]][cell[1]]
-        return sum(not (value & wall)
-                   for _, _, wall, _ in self._directions) == 1
+    def _closed_neighbors(self, cell: Cell) -> list[Cell]:
+        """List ordinary neighbors that still have a separating wall."""
+        return [direction.neighbor(cell) for direction in DIRECTIONS
+                if direction.neighbor(cell) in self._ordinary_cells
+                and self._grid.has_wall(cell, direction.wall)]
 
-    def _closed_neighbors(
-        self, cell: tuple[int, int]
-    ) -> list[tuple[int, int]]:
-        """List ordinary neighbors separated from cell by a closed wall."""
-        r, c = cell
-        return [(r + dr, c + dc) for dr, dc, wall, _ in self._directions
-                if (r + dr, c + dc) in self._parent
-                and self._maze[r][c] & wall]
+    def _area_is_fully_open(self, top_row: int, left_column: int) -> bool:
+        """Check every internal eastward and southward wall of a square."""
+        size = FORBIDDEN_OPEN_AREA_SIZE
+        horizontal_open = all(
+            not self._grid.has_wall((row, column), Wall.EAST)
+            for row in range(top_row, top_row + size)
+            for column in range(left_column, left_column + size - 1)
+        )
+        vertical_open = all(
+            not self._grid.has_wall((row, column), Wall.SOUTH)
+            for row in range(top_row, top_row + size - 1)
+            for column in range(left_column, left_column + size)
+        )
+        return horizontal_open and vertical_open
 
-    def _open_square(self, row: int, col: int) -> bool:
-        """Check the twelve internal shared walls of one 3-by-3 block."""
-        horizontal = all(not (self._maze[r][c] & 2)
-                         for r in range(row, row + 3)
-                         for c in range(col, col + 2))
-        vertical = all(not (self._maze[r][c] & 4)
-                       for r in range(row, row + 2)
-                       for c in range(col, col + 3))
-        return horizontal and vertical
+    def _creates_open_area(self, first: Cell, second: Cell) -> bool:
+        """Inspect only squares containing the newly opened shared wall."""
+        size = FORBIDDEN_OPEN_AREA_SIZE
+        first_row = max(0, max(first[0], second[0]) - (size - 1))
+        last_row = min(min(first[0], second[0]), self._grid.height - size)
+        first_column = max(0, max(first[1], second[1]) - (size - 1))
+        last_column = min(min(first[1], second[1]), self._grid.width - size)
+        return any(self._area_is_fully_open(row, column)
+                   for row in range(first_row, last_row + 1)
+                   for column in range(first_column, last_column + 1))
 
-    def _creates_open_square(
-        self, a: tuple[int, int], b: tuple[int, int]
-    ) -> bool:
-        """Inspect only 3-by-3 blocks containing the changed shared wall."""
-        first_r = max(0, max(a[0], b[0]) - 2)
-        last_r = min(min(a[0], b[0]), self._height - 3)
-        first_c = max(0, max(a[1], b[1]) - 2)
-        last_c = min(min(a[1], b[1]), self._width - 3)
-        return any(self._open_square(r, c)
-                   for r in range(first_r, last_r + 1)
-                   for c in range(first_c, last_c + 1))
-
-    def _try_loop(self, a: tuple[int, int], b: tuple[int, int]) -> bool:
-        """After connectivity repair, add a loop unless it opens a 3x3 area."""
-        wall, _ = self._wall_pair(a, b)
-        old_a = self._maze[a[0]][a[1]]
-        old_b = self._maze[b[0]][b[1]]
-        if not (old_a & wall):
+    def _try_adding_cycle(self, first: Cell, second: Cell) -> bool:
+        """Open a wall unless doing so would create a forbidden open area."""
+        direction = self._grid.direction_between(first, second)
+        if not self._grid.has_wall(first, direction.wall):
             return False
-        self._open_wall(a, b)
-        if self._creates_open_square(a, b):
-            self._maze[a[0]][a[1]] = old_a
-            self._maze[b[0]][b[1]] = old_b
+        first_walls = self._grid.wall_value(first)
+        second_walls = self._grid.wall_value(second)
+        self._grid.open_passage(first, second)
+        if self._creates_open_area(first, second):
+            self._grid.set_wall_value(first, first_walls)
+            self._grid.set_wall_value(second, second_walls)
             return False
-        self._cycles += 1
+        self._cycle_count += 1
         return True
 
-    def _braid(self) -> None:
-        """Try to give every dead end a second exit without large rooms."""
-        dead_ends = [cell for cell in self._parent
-                     if self._is_dead_end(cell)]
-        self._rng.shuffle(dead_ends)
+    def _braid_dead_ends(self) -> None:
+        """Prefer openings that remove two dead ends with one passage."""
+        dead_ends = [cell for cell in self._ordinary_cells
+                     if self._grid.is_dead_end(cell)]
+        self._random.shuffle(dead_ends)
         for cell in dead_ends:
-            if not self._is_dead_end(cell):
+            if not self._grid.is_dead_end(cell):
                 continue
             candidates = self._closed_neighbors(cell)
-            self._rng.shuffle(candidates)
-            candidates.sort(key=lambda other: not self._is_dead_end(other))
+            self._random.shuffle(candidates)
+            candidates.sort(
+                key=lambda other: not self._grid.is_dead_end(other),
+            )
             for neighbor in candidates:
-                if self._try_loop(cell, neighbor):
+                if self._try_adding_cycle(cell, neighbor):
                     break
 
-    def _add_loops(self) -> None:
-        """Ensure at least two independent cycles, if legal openings exist."""
-        for a, b in self._edges:
-            if self._cycles >= 2:
+    def _ensure_minimum_cycles(self) -> None:
+        """Add any remaining required cycles where legal openings exist."""
+        for first, second in self._neighbor_pairs:
+            if self._cycle_count >= MIN_INDEPENDENT_CYCLES:
                 return
-            self._try_loop(a, b)
+            self._try_adding_cycle(first, second)
 
-    def _playable(self) -> bool:
-        """Apply the subject's minimum loops and tolerated dead-end count."""
-        dead_ends = sum(self._is_dead_end(cell) for cell in self._parent)
-        return self._cycles >= 2 and dead_ends <= 2
+    def _meets_braiding_rules(self) -> bool:
+        """Check independent cycle and dead-end counts for this layout."""
+        dead_end_count = sum(self._grid.is_dead_end(cell)
+                             for cell in self._ordinary_cells)
+        return (self._cycle_count >= MIN_INDEPENDENT_CYCLES
+                and dead_end_count <= MAX_DEAD_ENDS)

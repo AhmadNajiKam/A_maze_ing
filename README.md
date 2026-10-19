@@ -17,7 +17,7 @@ when an eligible placement exists; otherwise a warning explains its omission.
 ## Instructions
 
 Use Python 3.10 or later, [uv](https://docs.astral.sh/uv/), Make, and a Unix-like
-terminal supporting Unicode, ANSI colors, and cursor-position queries. There
+terminal supporting Unicode and ANSI cursor positioning/colors. There
 are no third-party runtime dependencies. Run these commands from the project
 root; Python source does not need a separate compilation step:
 
@@ -39,7 +39,8 @@ uv run python a_maze_ing.py config.txt
 ```
 
 `make run` uses the supplied `config.txt`; `make debug` runs it through `pdb`.
-The terminal must have at least `max(3 * WIDTH + 2, 30)` columns and
+The terminal must fit the maze and menu, with an extra column to prevent
+line wrapping: `max(3 * WIDTH + 1, longest menu/prompt length) + 1` columns and
 `2 * HEIGHT + 11` rows, including room for the menu. The supplied 40×20 grid
 needs 122 columns and 51 rows. Enlarge the terminal or zoom out if needed.
 A successful non-interactive run exports the maze, then reports that display
@@ -92,10 +93,14 @@ increments the current seed.
 
 Enter a number at `Choice (1-6): ` and press Enter. `E` marks the entry and `X`
 the exit. The shortest path is initially shown in cyan; the 42 interiors are
-initially white. Option 3 randomly selects a different wall color; options 4
-and 5 cycle the path and pattern colors. Hiding the path keeps both endpoints
-visible. Regeneration rewrites the output file and retains visibility and all
-three color settings. EOF and Ctrl-C exit cleanly.
+initially white. Options 3–5 prompt for a color name (`red`, `green`, `yellow`,
+`blue`, `magenta`, `cyan`, or `white`) or a custom hexadecimal color such as
+`#FF8800`. Wall colors also support `bright_white`. Names are case-insensitive;
+surrounding whitespace is ignored. Invalid colors prompt again, and blank input
+cancels without changing the color. Custom hex colors require a terminal with
+24-bit (true-color) support. Hiding the path keeps both endpoints visible.
+Regeneration rewrites the output file and retains visibility and all three
+color settings. EOF and Ctrl-C exit cleanly.
 
 The renderer uses Unicode walls and junctions, with three columns and two rows
 per cell. Color changes affect the display, not the maze or exported data.
@@ -157,28 +162,77 @@ cost, the returned route is shortest in either mode.
 ## Reusing mazegen
 
 `mazegen/` is the reusable package, exporting `Config`, `Parser`,
-`MazeGenerator`, `solver`, and `Renderer`. Its `__init__.py` includes API
+`MazeGenerator`, `MazeGrid`, `Wall`, `BFS`, `DisplaySettings`, `Renderer`, and
+the `solver` module. Its `__init__.py` includes API
 documentation. `LICENSE.md` uses the MIT license, allowing reuse and
 distribution under its terms. Generation can be used without the interactive
 application and does not write files or launch a display:
 
 ```python
-from mazegen import Config, MazeGenerator, solver
+from mazegen import BFS, Config, MazeGenerator
 
-# [width, height, entry(x,y), exit(x,y), output_file, perfect, seed]
-config = Config([20, 15, (0, 0), (19, 14), "maze.txt", True, 3])
+config = Config(
+    width=20,
+    height=15,
+    entry=(0, 0),       # External coordinates: (x, y).
+    exit=(19, 14),
+    output_file="maze.txt",
+    perfect=True,
+    seed=3,
+)
 generator = MazeGenerator(config)
-maze = generator._generate()  # list[list[int]], indexed as maze[y][x]
-solution = solver.BFS(maze, (0, 0), (14, 19)).solve()
+maze = generator.generate()  # list[list[int]], indexed as maze[row][column]
+solution = BFS(maze, config.entry_cell, config.exit_cell).solve()
 print(maze[0][0], solution)
 ```
 
-Change the size, endpoints, mode, and seed in the `Config` list to pass custom
-parameters. `_generate()` returns the maze as a row-major `list[list[int]]`
+Change the named `Config` fields to pass custom parameters. `generate()`
+returns the maze as a row-major `list[list[int]]`
 of wall-bit values; `BFS.solve()` returns a shortest direction string.
 Invalid/impossible generator parameters or an unreachable BFS exit raise
-`ValueError`. `Parser()._read_config("config.txt")` can read a configuration,
-returning `None` after reporting a parsing/file error.
+`ValueError`. `Parser().parse("config.txt")` reads a configuration or raises
+`ValueError` with filename/line context for parsing errors. The application
+handles error reporting. Grid, solver, and renderer coordinates consistently
+use `(row, column)`; `Config.entry_cell` and `Config.exit_cell` convert the
+external `(x, y)` endpoints.
+
+To display a maze, use:
+
+```python
+from mazegen import DisplaySettings, Renderer
+
+renderer = Renderer(
+    maze, solution,
+    entry=config.entry_cell,
+    exit=config.exit_cell,
+    settings=DisplaySettings(show_path=True),
+)
+renderer.render()
+```
+
+`renderer.replace_maze(maze, solution, entry=..., exit=...)` retains display
+preferences when regenerating. `export_maze(config, maze, solution)` from
+`mazegen.exporter` writes the output independently of generation and display.
+
+### Code organization
+
+- `config.py`: typed settings and external-to-internal endpoint conversion.
+- `directions.py`, `grid.py`: shared wall bits, movement, and coherent passages.
+- `disjoint_set.py`: connected-component tracking.
+- `pattern.py`: 42 placement and feasibility checks.
+- `generation_rules.py`: named generation limits and specification rules.
+- `maze_generator.py`: Sidewinder, connectivity repair, and braiding.
+- `solver.py`, `exporter.py`: shortest-path solving and file output.
+- `render_layout.py`: cell geometry and terminal size calculations.
+- `terminal.py`: ANSI output and terminal size validation.
+- `colors.py`: named colors, hex validation, and true-color ANSI parameters.
+- `renderer.py`: wall canvas, color preferences, and overlays.
+- `menu.py`: shared menu labels and prompt.
+- `a_maze_ing.py`: application orchestration and menu commands.
+
+The public API now uses named `Config` fields, `Parser.parse()`, and
+`MazeGenerator.generate()` in place of the original positional list and
+underscore-prefixed methods. Renderer endpoints now use `(row, column)`.
 
 ### Build and install the distributable
 
@@ -205,6 +259,7 @@ directory when checking the installed package.
 
 ```sh
 make lint
+uv run python -m unittest discover -s tests -v
 make clean
 ```
 
@@ -215,8 +270,10 @@ mypy . --warn-return-any --warn-unused-ignores --ignore-missing-imports --disall
 ```
 
 `make lint-strict` additionally provides the optional `mypy . --strict` check.
-`make clean` removes Python and mypy caches. Independent unittest/project
-scripts were used for edge cases and integration. The subject's
+The regression tests cover pre-refactor fixed-seed results, connectivity,
+wall coherence, generation constraints, shortest paths, parsing, export,
+rendering, and menu actions. `make clean` removes Python and mypy caches.
+The subject's
 `maze_analyzer.py`, supplied in `a_maze_ing-analyzer.tgz`, was also used to
 check wall coherence, connectivity, and generation-mode verdicts.
 
