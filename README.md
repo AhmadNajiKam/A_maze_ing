@@ -253,10 +253,17 @@ a wheel from the current sources at the project root:
 
 ```sh
 make install
-uv run python -m build --wheel --outdir .
+make build
 ```
 
-The distributable is `mazegen-0.1.0-py3-none-any.whl`. To install that root-level
+`make build` runs `uv build --wheel --out-dir .`. All sources and build metadata
+are included in the repository; no existing wheel is needed to rebuild it.
+The single distributable, `mazegen-0.1.0-py3-none-any.whl`, bundles the reusable
+package, its API documentation in `mazegen/__init__.py`, project documentation
+in the package metadata, and the MIT license. The single-file requirement refers
+to this installable archive, not to combining all Python sources into one file.
+
+To install that root-level
 wheel into a separate environment, run from the project root:
 
 ```sh
@@ -271,7 +278,8 @@ directory when checking the installed package.
 
 ```sh
 make lint
-uv run python -m unittest discover -s tests -v
+make lint-strict
+make build
 make clean
 ```
 
@@ -282,9 +290,11 @@ mypy . --warn-return-any --warn-unused-ignores --ignore-missing-imports --disall
 ```
 
 `make lint-strict` additionally provides the optional `mypy . --strict` check.
-The regression tests cover pre-refactor fixed-seed results, connectivity,
-wall coherence, generation constraints, shortest paths, parsing, export,
-rendering, and menu actions. `make clean` removes Python and mypy caches.
+There is currently no `tests/` directory or bundled automated regression suite.
+To smoke-test the distributable, install the wheel into a separate environment
+and run the reuse example above from outside the repository.
+`make clean` removes Python and mypy caches recursively, excluding `.venv` and
+`.git`; it preserves source files, the installed environment, and the wheel.
 The subject's
 `maze_analyzer.py`, supplied in `a_maze_ing-analyzer.tgz`, was also used to
 check wall coherence, connectivity, and generation-mode verdicts.

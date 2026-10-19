@@ -1,6 +1,9 @@
 install:
 	uv sync
 
+build:
+	uv build --wheel --out-dir .
+
 run:
 	uv run python a_maze_ing.py config.txt
 
@@ -17,6 +20,8 @@ lint-strict:
 	uv run mypy . --strict
 
 clean:
-	rm -rf __pycache__ .mypy_cache
-	rm -rf */__pycache__ */.mypy_cache
-.PHONY: clean install run debug lint lint-strict
+	find . -type d \( -name .git -o -name .venv \) -prune -o \
+		-type d \( -name __pycache__ -o -name .mypy_cache \) \
+		-prune -exec rm -rf {} +
+
+.PHONY: clean install build run debug lint lint-strict
