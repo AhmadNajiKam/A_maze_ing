@@ -3,10 +3,7 @@
 import os
 import sys
 
-from .colors import RGBColor
-
-ScreenPosition = tuple[int, int]  # Terminal coordinates are one-based.
-ANSI_RESET = "\x1b[0m"
+from .colors import BackgroundColor, ForegroundColor, RGBColor, parse_color
 
 
 class Terminal:
@@ -28,14 +25,21 @@ class Terminal:
         """Clear the screen and establish the top-left drawing origin."""
         print(end="\x1b[2J\x1b[H")
 
-    def move_cursor(self, position: ScreenPosition) -> None:
+    def move_cursor(self, position: tuple[int, int]) -> None:
         """Move to a one-based (row, column) screen position."""
         row, column = position
         print(end=f"\x1b[{row};{column}H")
 
     def set_color(self, *colors: int | RGBColor) -> None:
-        """Apply named or true-color foreground/background ANSI codes."""
-        codes = ";".join(str(color) for color in colors)
+        """Resolve named colors to RGB rather than theme-defined ANSI slots."""
+        resolved = (
+            parse_color(
+                color.name, background=isinstance(color, BackgroundColor),
+            )
+            if isinstance(color, (ForegroundColor, BackgroundColor)) else color
+            for color in colors
+        )
+        codes = ";".join(str(color) for color in resolved)
         print(end=f"\x1b[{codes}m")
 
     def write(self, text: str) -> None:
@@ -44,4 +48,4 @@ class Terminal:
 
     def reset_color(self) -> None:
         """Restore terminal colors even if drawing failed."""
-        print(end=ANSI_RESET, flush=True)
+        print(end="\x1b[0m", flush=True)

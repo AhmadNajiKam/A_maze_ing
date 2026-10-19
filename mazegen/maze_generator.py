@@ -3,12 +3,9 @@
 import random
 
 from .config import Config
-from .directions import Cell, DIRECTIONS, EAST, NORTH, SOUTH, Wall
+from .directions import Wall, make_directions
 from .disjoint_set import DisjointSet
-from .generation_rules import (
-    FORBIDDEN_OPEN_AREA_SIZE, MAX_DEAD_ENDS, MAX_GENERATION_ATTEMPTS,
-    MIN_INDEPENDENT_CYCLES,
-)
+from .generation_rules import GenerationRules
 from .grid import MazeGrid
 from .pattern import PatternPlacer
 
@@ -20,13 +17,16 @@ class MazeGenerator:
         """Store settings and a local random source for reproducible mazes."""
         self._config = config
         self._random = random.Random(config.seed)
+        self._rules = GenerationRules()
+        self._directions = make_directions()
+        self._north, self._east, self._south, _ = self._directions
 
     def generate(self) -> list[list[int]]:
         """Return wall-bit rows, or raise if constraints cannot be met."""
         self._config.validate()
         self._random.seed(self._config.seed)
-        self._blocked_cells = PatternPlacer(self._config).place()
-        for _ in range(MAX_GENERATION_ATTEMPTS):
+        self._blocked_cells = PatternPlacer(self._config, self._rules).place()
+        for _ in range(self._rules.max_generation_attempts):
             self._reset_layout()
             self._carve_sidewinder_runs()
             self._connect_components()
@@ -37,9 +37,10 @@ class MazeGenerator:
             if self._meets_braiding_rules():
                 return self._grid.cells
         raise ValueError(
-            f"Could not build a board with {MIN_INDEPENDENT_CYCLES} loops "
-            f"and at most {MAX_DEAD_ENDS} dead ends after "
-            f"{MAX_GENERATION_ATTEMPTS} attempts. "
+            f"Could not build a board with "
+            f"{self._rules.min_independent_cycles} loops "
+            f"and at most {self._rules.max_dead_ends} dead ends after "
+            f"{self._rules.max_generation_attempts} attempts. "
             "Try another seed or a larger size."
         )
 
@@ -47,21 +48,26 @@ class MazeGenerator:
         """Close walls and reset connectivity, retaining the chosen pattern."""
         self._grid = MazeGrid.closed(self._config.width, self._config.height)
         # Preserve row-major iteration so a seed has stable random choices.
-        self._ordinary_cells: dict[Cell, None] = {
+        self._ordinary_cells: dict[tuple[int, int], None] = {
             (row, column): None
             for row in range(self._grid.height)
             for column in range(self._grid.width)
             if (row, column) not in self._blocked_cells
         }
         self._components = DisjointSet(self._ordinary_cells)
-        self._neighbor_pairs: list[tuple[Cell, Cell]] = [
+        self._neighbor_pairs: list[
+            tuple[tuple[int, int], tuple[int, int]]
+        ] = [
             (cell, neighbor) for cell in self._ordinary_cells
-            for neighbor in (EAST.neighbor(cell), SOUTH.neighbor(cell))
+            for neighbor in (self._east.neighbor(cell),
+                             self._south.neighbor(cell))
             if neighbor in self._ordinary_cells
         ]
         self._cycle_count = 0
 
-    def _join_components(self, first: Cell, second: Cell) -> None:
+    def _join_components(
+        self, first: tuple[int, int], second: tuple[int, int],
+    ) -> None:
         """Carve a passage only when it joins separate components."""
         if self._components.union(first, second):
             self._grid.open_passage(first, second)
@@ -69,14 +75,14 @@ class MazeGenerator:
     def _carve_sidewinder_runs(self) -> None:
         """Build eastward runs and select one northward passage per run."""
         for row in range(self._grid.height):
-            north_candidates: list[Cell] = []
+            north_candidates: list[tuple[int, int]] = []
             for column in range(self._grid.width):
                 cell = (row, column)
                 if cell not in self._ordinary_cells:
                     continue
-                if NORTH.neighbor(cell) in self._ordinary_cells:
+                if self._north.neighbor(cell) in self._ordinary_cells:
                     north_candidates.append(cell)
-                east_neighbor = EAST.neighbor(cell)
+                east_neighbor = self._east.neighbor(cell)
                 east_blocked = east_neighbor not in self._ordinary_cells
                 close_run = east_blocked or (
                     bool(north_candidates)
@@ -87,11 +93,11 @@ class MazeGenerator:
                 else:
                     self._join_components(cell, east_neighbor)
 
-    def _finish_run(self, north_candidates: list[Cell]) -> None:
+    def _finish_run(self, north_candidates: list[tuple[int, int]]) -> None:
         """Try one northward connection, then start a new horizontal run."""
         if north_candidates:
             cell = self._random.choice(north_candidates)
-            self._join_components(cell, NORTH.neighbor(cell))
+            self._join_components(cell, self._north.neighbor(cell))
         north_candidates.clear()
 
     def _connect_components(self) -> None:
@@ -106,20 +112,22 @@ class MazeGenerator:
             possible_cycles = (
                 len(self._neighbor_pairs) - len(self._ordinary_cells) + 1
             )
-            if possible_cycles < MIN_INDEPENDENT_CYCLES:
+            if possible_cycles < self._rules.min_independent_cycles:
                 raise ValueError(
                     "This grid is too small or narrow for two loops",
                 )
 
-    def _closed_neighbors(self, cell: Cell) -> list[Cell]:
+    def _closed_neighbors(
+        self, cell: tuple[int, int],
+    ) -> list[tuple[int, int]]:
         """List ordinary neighbors that still have a separating wall."""
-        return [direction.neighbor(cell) for direction in DIRECTIONS
+        return [direction.neighbor(cell) for direction in self._directions
                 if direction.neighbor(cell) in self._ordinary_cells
                 and self._grid.has_wall(cell, direction.wall)]
 
     def _area_is_fully_open(self, top_row: int, left_column: int) -> bool:
         """Check every internal eastward and southward wall of a square."""
-        size = FORBIDDEN_OPEN_AREA_SIZE
+        size = self._rules.forbidden_open_area_size
         horizontal_open = all(
             not self._grid.has_wall((row, column), Wall.EAST)
             for row in range(top_row, top_row + size)
@@ -132,9 +140,11 @@ class MazeGenerator:
         )
         return horizontal_open and vertical_open
 
-    def _creates_open_area(self, first: Cell, second: Cell) -> bool:
+    def _creates_open_area(
+        self, first: tuple[int, int], second: tuple[int, int],
+    ) -> bool:
         """Inspect only squares containing the newly opened shared wall."""
-        size = FORBIDDEN_OPEN_AREA_SIZE
+        size = self._rules.forbidden_open_area_size
         first_row = max(0, max(first[0], second[0]) - (size - 1))
         last_row = min(min(first[0], second[0]), self._grid.height - size)
         first_column = max(0, max(first[1], second[1]) - (size - 1))
@@ -143,7 +153,9 @@ class MazeGenerator:
                    for row in range(first_row, last_row + 1)
                    for column in range(first_column, last_column + 1))
 
-    def _try_adding_cycle(self, first: Cell, second: Cell) -> bool:
+    def _try_adding_cycle(
+        self, first: tuple[int, int], second: tuple[int, int],
+    ) -> bool:
         """Open a wall unless doing so would create a forbidden open area."""
         direction = self._grid.direction_between(first, second)
         if not self._grid.has_wall(first, direction.wall):
@@ -178,7 +190,7 @@ class MazeGenerator:
     def _ensure_minimum_cycles(self) -> None:
         """Add any remaining required cycles where legal openings exist."""
         for first, second in self._neighbor_pairs:
-            if self._cycle_count >= MIN_INDEPENDENT_CYCLES:
+            if self._cycle_count >= self._rules.min_independent_cycles:
                 return
             self._try_adding_cycle(first, second)
 
@@ -186,5 +198,5 @@ class MazeGenerator:
         """Check independent cycle and dead-end counts for this layout."""
         dead_end_count = sum(self._grid.is_dead_end(cell)
                              for cell in self._ordinary_cells)
-        return (self._cycle_count >= MIN_INDEPENDENT_CYCLES
-                and dead_end_count <= MAX_DEAD_ENDS)
+        return (self._cycle_count >= self._rules.min_independent_cycles
+                and dead_end_count <= self._rules.max_dead_ends)

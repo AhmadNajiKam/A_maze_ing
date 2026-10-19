@@ -6,10 +6,7 @@ import sys
 from mazegen import Config, DisplaySettings, MazeGenerator, Parser, Renderer
 from mazegen.colors import parse_color
 from mazegen.exporter import export_maze
-from mazegen.menu import (
-    INVALID_CHOICE_MESSAGE, INVALID_REGENERATION_MESSAGE, MENU_OPTIONS,
-    MENU_PROMPT, REGENERATION_OPTIONS, REGENERATION_PROMPT, SEED_PROMPT,
-)
+from mazegen.menu import main_menu, regeneration_menu
 from mazegen.solver import BFS
 
 
@@ -46,16 +43,19 @@ def choose_color(renderer: Renderer, choice: str) -> None:
 
 def choose_seed(current_seed: int) -> int:
     """Choose a new seed or reuse/override the active seed in memory."""
-    print("\n".join(REGENERATION_OPTIONS))
+    options, prompt = regeneration_menu()
+    print("\n".join(options))
     while True:
-        choice = input(REGENERATION_PROMPT).strip()
+        choice = input(prompt).strip()
         if choice == "1":
             return current_seed + 1
         if choice == "2":
             break
-        print(INVALID_REGENERATION_MESSAGE)
+        print("Please enter a number from 1 to 2.")
     while True:
-        value = input(SEED_PROMPT.format(seed=current_seed)).strip()
+        value = input(
+            f"Seed [{current_seed}] (Enter to keep current): "
+        ).strip()
         if not value:
             return current_seed
         if value.isdecimal():
@@ -68,9 +68,10 @@ def choose_seed(current_seed: int) -> int:
 
 def run_menu(config: Config, renderer: Renderer) -> None:
     """Handle user commands while preserving renderer preferences."""
+    options, prompt = main_menu()
     while True:
-        print("\n".join(MENU_OPTIONS))
-        choice = input(MENU_PROMPT).strip()
+        print("\n".join(options))
+        choice = input(prompt).strip()
         if choice == "6":
             return
         try:
@@ -86,7 +87,7 @@ def run_menu(config: Config, renderer: Renderer) -> None:
             elif choice in {"3", "4", "5"}:
                 choose_color(renderer, choice)
             else:
-                print(INVALID_CHOICE_MESSAGE)
+                print("Please enter a number from 1 to 6.")
                 continue
             renderer.render()
         except (OSError, ValueError, MemoryError, OverflowError) as error:

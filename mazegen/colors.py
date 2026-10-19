@@ -1,4 +1,4 @@
-"""Named ANSI colors and validated 24-bit custom colors."""
+"""Theme-independent named colors and validated 24-bit custom colors."""
 
 from dataclasses import dataclass
 from enum import IntEnum
@@ -30,6 +30,18 @@ class BackgroundColor(IntEnum):
     WHITE = 47
 
 
+NAMED_COLORS = {
+    "RED": "#FF0000",
+    "GREEN": "#00FF00",
+    "YELLOW": "#FFFF00",
+    "BLUE": "#0000FF",
+    "MAGENTA": "#FF00FF",
+    "CYAN": "#00FFFF",
+    "WHITE": "#FFFFFF",
+    "BRIGHT_WHITE": "#FFFFFF",
+}
+
+
 @dataclass(frozen=True)
 class RGBColor:
     """An RGB color with its foreground/background rendering mode."""
@@ -52,13 +64,13 @@ class RGBColor:
         return f"{mode};2;{self.red};{self.green};{self.blue}"
 
 
-def parse_color(value: str, *, background: bool = False) -> int | RGBColor:
+def parse_color(value: str, *, background: bool = False) -> RGBColor:
     """Accept a named color or an exact #RRGGBB hexadecimal value."""
     value = value.strip()
     palette = BackgroundColor if background else ForegroundColor
     name = value.upper()
     if name in palette.__members__:
-        return palette[name]
+        value = NAMED_COLORS[name]
     if re.fullmatch(r"#[0-9a-fA-F]{6}", value):
         return RGBColor(
             int(value[1:3], 16), int(value[3:5], 16),

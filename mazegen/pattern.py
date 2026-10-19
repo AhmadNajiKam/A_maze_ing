@@ -1,28 +1,27 @@
 """Choose a connected, endpoint-safe placement for the blocked 42 cells."""
 
 from .config import Config
-from .directions import Cell, DIRECTIONS
-from .generation_rules import MAX_DEAD_ENDS
-
-PATTERN_42 = (
-    "1000111",
-    "1000001",
-    "1110111",
-    "0010100",
-    "0010111",
-)
+from .directions import make_directions
+from .generation_rules import GenerationRules
 
 
 class PatternPlacer:
     """Prefer central interior placements without isolating ordinary cells."""
 
-    def __init__(self, config: Config) -> None:
+    def __init__(
+        self, config: Config, rules: GenerationRules | None = None,
+    ) -> None:
         """Store board dimensions and cells that the pattern must not cover."""
         self._config = config
-        self._pattern_height = len(PATTERN_42)
-        self._pattern_width = len(PATTERN_42[0])
+        self._rules = rules if rules is not None else GenerationRules()
+        self._directions = make_directions()
+        self._pattern = (
+            "1000111", "1000001", "1110111", "0010100", "0010111",
+        )
+        self._pattern_height = len(self._pattern)
+        self._pattern_width = len(self._pattern[0])
 
-    def place(self) -> set[Cell]:
+    def place(self) -> set[tuple[int, int]]:
         """Return blocked cells, or warn and omit an infeasible pattern."""
         reserved = self._reserved_cells()
         for origin in self._candidate_origins():
@@ -32,7 +31,7 @@ class PatternPlacer:
         print("Warning: no eligible placement for the 42 pattern; omitted.")
         return set()
 
-    def _reserved_cells(self) -> set[Cell]:
+    def _reserved_cells(self) -> set[tuple[int, int]]:
         """Protect endpoints, plus corners and centre in non-perfect mode."""
         height, width = self._config.height, self._config.width
         reserved = {self._config.entry_cell, self._config.exit_cell}
@@ -42,7 +41,7 @@ class PatternPlacer:
                              (height - 1, width - 1)})
         return reserved
 
-    def _candidate_origins(self) -> list[Cell]:
+    def _candidate_origins(self) -> list[tuple[int, int]]:
         """Order origins by interior preference, then distance from centre."""
         last_row = self._config.height - self._pattern_height
         last_column = self._config.width - self._pattern_width
@@ -56,14 +55,14 @@ class PatternPlacer:
         ))
         return origins
 
-    def _blocked_cells(self, origin: Cell) -> set[Cell]:
+    def _blocked_cells(self, origin: tuple[int, int]) -> set[tuple[int, int]]:
         """Translate the pattern bitmap to board coordinates."""
         origin_row, origin_column = origin
         return {(origin_row + row, origin_column + column)
-                for row, line in enumerate(PATTERN_42)
+                for row, line in enumerate(self._pattern)
                 for column, value in enumerate(line) if value == "1"}
 
-    def _placement_is_playable(self, blocked: set[Cell]) -> bool:
+    def _placement_is_playable(self, blocked: set[tuple[int, int]]) -> bool:
         """Check connectivity and forced dead ends before carving walls."""
         start = self._config.entry_cell
         seen = {start}
@@ -72,7 +71,7 @@ class PatternPlacer:
         while pending:
             cell = pending.pop()
             neighbor_count = 0
-            for direction in DIRECTIONS:
+            for direction in self._directions:
                 neighbor = direction.neighbor(cell)
                 row, column = neighbor
                 if (0 <= row < self._config.height
@@ -88,6 +87,8 @@ class PatternPlacer:
         ordinary_cell_count = (
             self._config.height * self._config.width - len(blocked)
         )
-        return (len(seen) == ordinary_cell_count
-                and (self._config.perfect
-                     or forced_dead_ends <= MAX_DEAD_ENDS))
+        return (
+            len(seen) == ordinary_cell_count
+            and (self._config.perfect
+                 or forced_dead_ends <= self._rules.max_dead_ends)
+        )

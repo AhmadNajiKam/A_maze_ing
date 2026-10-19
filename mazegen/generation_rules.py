@@ -1,8 +1,12 @@
-"""Generation constraints required by the maze specification."""
+"""Instance-owned constraints for maze generation and pattern placement."""
 
-# Retries bound the search for a braided layout satisfying every constraint.
-MAX_GENERATION_ATTEMPTS = 30
-MIN_INDEPENDENT_CYCLES = 2
-MAX_DEAD_ENDS = 2
-# Larger completely open rooms are forbidden; inspect their shared walls.
-FORBIDDEN_OPEN_AREA_SIZE = 3
+
+class GenerationRules:
+    """Keep rule values on each instance, not in shared constants."""
+
+    def __init__(self) -> None:
+        """Initialize the fixed constraints for this generation session."""
+        self.max_generation_attempts = 30
+        self.min_independent_cycles = 2
+        self.max_dead_ends = 2
+        self.forbidden_open_area_size = 3

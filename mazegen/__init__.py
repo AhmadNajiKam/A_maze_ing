@@ -21,16 +21,13 @@ with filename context. Generation itself performs no file or terminal I/O,
 apart from warning when the 42 pattern cannot be placed.
 """
 
-from .config import Config
-from .directions import Wall
-from .grid import MazeGrid
-from .maze_generator import MazeGenerator
-from .parser import Parser
-from .renderer import DisplaySettings, Renderer
-from .solver import BFS
-from . import solver
-
-__all__ = [
-    "BFS", "Config", "DisplaySettings", "MazeGenerator", "MazeGrid", "Parser",
-    "Renderer", "Wall", "solver",
-]
+# Explicit re-exports keep the public API without a module-level __all__ list.
+from .config import Config as Config  # noqa: F401
+from .directions import Wall as Wall  # noqa: F401
+from .grid import MazeGrid as MazeGrid  # noqa: F401
+from .maze_generator import MazeGenerator as MazeGenerator  # noqa: F401
+from .parser import Parser as Parser  # noqa: F401
+from .renderer import DisplaySettings as DisplaySettings  # noqa: F401
+from .renderer import Renderer as Renderer  # noqa: F401
+from .solver import BFS as BFS  # noqa: F401
+from . import solver as solver  # noqa: F401

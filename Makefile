@@ -15,6 +15,9 @@ lint:
 	uv run mypy . \
 		--warn-return-any --warn-unused-ignores --ignore-missing-imports --disallow-untyped-defs --check-untyped-defs
 
+test:
+	uv run python -m unittest discover -s tests -v
+
 lint-strict:
 	uv run flake8 .
 	uv run mypy . --strict
@@ -24,4 +27,4 @@ clean:
 		-type d \( -name __pycache__ -o -name .mypy_cache \) \
 		-prune -exec rm -rf {} +
 
-.PHONY: clean install build run debug lint lint-strict
+.PHONY: clean install build run debug lint lint-strict test

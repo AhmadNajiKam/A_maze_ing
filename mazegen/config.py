@@ -2,8 +2,6 @@
 
 from dataclasses import dataclass
 
-from .directions import Cell, Position
-
 
 @dataclass(kw_only=True)
 class Config:
@@ -11,8 +9,8 @@ class Config:
 
     width: int
     height: int
-    entry: Position
-    exit: Position
+    entry: tuple[int, int]
+    exit: tuple[int, int]
     output_file: str
     perfect: bool
     seed: int
@@ -28,13 +26,13 @@ class Config:
                 raise ValueError("ENTRY and EXIT must be inside the maze")
 
     @property
-    def entry_cell(self) -> Cell:
+    def entry_cell(self) -> tuple[int, int]:
         """Convert the entry to the internal (row, column) convention."""
         x, y = self.entry
         return y, x
 
     @property
-    def exit_cell(self) -> Cell:
+    def exit_cell(self) -> tuple[int, int]:
         """Convert the exit to the internal (row, column) convention."""
         x, y = self.exit
         return y, x

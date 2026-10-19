@@ -232,7 +232,7 @@ preferences when regenerating. `export_maze(config, maze, solution)` from
 - `directions.py`, `grid.py`: shared wall bits, movement, and coherent passages.
 - `disjoint_set.py`: connected-component tracking.
 - `pattern.py`: 42 placement and feasibility checks.
-- `generation_rules.py`: named generation limits and specification rules.
+- `generation_rules.py`: instance-owned generation limits and specification rules.
 - `maze_generator.py`: Sidewinder, connectivity repair, and braiding.
 - `solver.py`, `exporter.py`: shortest-path solving and file output.
 - `render_layout.py`: cell geometry and terminal size calculations.
@@ -279,6 +279,7 @@ directory when checking the installed package.
 ```sh
 make lint
 make lint-strict
+make test
 make build
 make clean
 ```
@@ -290,7 +291,13 @@ mypy . --warn-return-any --warn-unused-ignores --ignore-missing-imports --disall
 ```
 
 `make lint-strict` additionally provides the optional `mypy . --strict` check.
-There is currently no `tests/` directory or bundled automated regression suite.
+`make test` runs the standard-library unittest suite in `tests/`, covering
+generation, solving, configuration parsing, menus, rendering, and data ownership.
+It also checks that Python sources contain no module-level data assignments
+(including constants and assignments nested in top-level control flow), or
+`global`/`nonlocal` statements. Keep data local to functions or explicitly owned
+by instances; do not replace module globals with class-level constant holders.
+Type definitions and enum members remain module-level definitions.
 To smoke-test the distributable, install the wheel into a separate environment
 and run the reuse example above from outside the repository.
 `make clean` removes Python and mypy caches recursively, excluding `.venv` and

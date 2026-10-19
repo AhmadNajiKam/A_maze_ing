@@ -4,11 +4,9 @@ from dataclasses import dataclass
 from enum import IntFlag
 
 from .colors import BackgroundColor, ForegroundColor, RGBColor
-from .directions import Cell, DIRECTIONS_BY_LETTER, Wall
+from .directions import Wall, make_directions
 from .grid import MazeGrid
-from .render_layout import (
-    CELL_COLUMN_SPACING, CELL_INTERIOR_WIDTH, CELL_ROW_SPACING, RenderLayout,
-)
+from .render_layout import RenderLayout
 from .terminal import Terminal
 
 
@@ -20,29 +18,6 @@ class Junction(IntFlag):
     RIGHT = 2
     DOWN = 4
     LEFT = 8
-
-
-JUNCTION_GLYPHS = {
-    Junction.NONE: " ",
-    Junction.UP: "╹",
-    Junction.RIGHT: "╺",
-    Junction.UP | Junction.RIGHT: "┗",
-    Junction.DOWN: "╻",
-    Junction.UP | Junction.DOWN: "┃",
-    Junction.RIGHT | Junction.DOWN: "┏",
-    Junction.UP | Junction.RIGHT | Junction.DOWN: "┣",
-    Junction.LEFT: "╸",
-    Junction.UP | Junction.LEFT: "┛",
-    Junction.RIGHT | Junction.LEFT: "━",
-    Junction.UP | Junction.RIGHT | Junction.LEFT: "┻",
-    Junction.DOWN | Junction.LEFT: "┓",
-    Junction.UP | Junction.DOWN | Junction.LEFT: "┫",
-    Junction.RIGHT | Junction.DOWN | Junction.LEFT: "┳",
-    Junction.UP | Junction.RIGHT | Junction.DOWN | Junction.LEFT: "╋",
-}
-HORIZONTAL_LINE = "━"
-VERTICAL_LINE = "┃"
-CELL_INTERIOR = " " * CELL_INTERIOR_WIDTH
 
 
 @dataclass
@@ -60,22 +35,47 @@ class Renderer:
 
     def __init__(
         self, maze: list[list[int]], solution: str = "", *,
-        entry: Cell = (0, 0), exit: Cell | None = None,
+        entry: tuple[int, int] = (0, 0),
+        exit: tuple[int, int] | None = None,
         settings: DisplaySettings | None = None,
         terminal: Terminal | None = None,
     ) -> None:
         """Accept reusable preferences and an injectable terminal writer."""
         self.settings = settings if settings is not None else DisplaySettings()
         self._terminal = terminal if terminal is not None else Terminal()
+        self._directions_by_letter = {
+            direction.letter: direction for direction in make_directions()
+        }
+        self._horizontal_line = "━"
+        self._vertical_line = "┃"
+        self._junction_glyphs = {
+            Junction.NONE: " ",
+            Junction.UP: "╹",
+            Junction.RIGHT: "╺",
+            Junction.UP | Junction.RIGHT: "┗",
+            Junction.DOWN: "╻",
+            Junction.UP | Junction.DOWN: "┃",
+            Junction.RIGHT | Junction.DOWN: "┏",
+            Junction.UP | Junction.RIGHT | Junction.DOWN: "┣",
+            Junction.LEFT: "╸",
+            Junction.UP | Junction.LEFT: "┛",
+            Junction.RIGHT | Junction.LEFT: "━",
+            Junction.UP | Junction.RIGHT | Junction.LEFT: "┻",
+            Junction.DOWN | Junction.LEFT: "┓",
+            Junction.UP | Junction.DOWN | Junction.LEFT: "┫",
+            Junction.RIGHT | Junction.DOWN | Junction.LEFT: "┳",
+            Junction.UP | Junction.RIGHT | Junction.DOWN | Junction.LEFT: "╋",
+        }
         self.replace_maze(maze, solution, entry=entry, exit=exit)
 
     def replace_maze(
         self, maze: list[list[int]], solution: str, *,
-        entry: Cell, exit: Cell | None = None,
+        entry: tuple[int, int], exit: tuple[int, int] | None = None,
     ) -> None:
         """Replace maze content while retaining all display preferences."""
         self._grid = MazeGrid(maze)
         self._layout = RenderLayout(self._grid.width, self._grid.height)
+        self._cell_interior = " " * self._layout.cell_interior_width
         self._solution = solution
         self._entry = entry
         self._exit = exit if exit is not None else (
@@ -94,21 +94,24 @@ class Renderer:
             for column in range(self._grid.width):
                 cell = (row, column)
                 top, left = self._layout.cell_corner(cell)
-                bottom = top + CELL_ROW_SPACING
-                right = left + CELL_COLUMN_SPACING
+                bottom = top + self._layout.cell_row_spacing
+                right = left + self._layout.cell_column_spacing
                 horizontal_walls = ((Wall.NORTH, top), (Wall.SOUTH, bottom))
                 for wall, wall_row in horizontal_walls:
                     if self._grid.has_wall(cell, wall):
                         for wall_column in range(left + 1, right):
-                            canvas[wall_row][wall_column] = HORIZONTAL_LINE
+                            canvas[wall_row][wall_column] = (
+                                self._horizontal_line
+                            )
                 vertical_walls = ((Wall.WEST, left), (Wall.EAST, right))
                 for wall, wall_column in vertical_walls:
                     if self._grid.has_wall(cell, wall):
                         for wall_row in range(top + 1, bottom):
-                            canvas[wall_row][wall_column] = VERTICAL_LINE
-        for row in range(0, self._layout.drawing_rows, CELL_ROW_SPACING):
+                            canvas[wall_row][wall_column] = self._vertical_line
+        for row in range(0, self._layout.drawing_rows,
+                         self._layout.cell_row_spacing):
             for column in range(0, self._layout.drawing_columns,
-                                CELL_COLUMN_SPACING):
+                                self._layout.cell_column_spacing):
                 canvas[row][column] = self._junction_glyph(
                     canvas, row, column,
                 )
@@ -119,22 +122,22 @@ class Renderer:
     ) -> str:
         """Combine line segments around this junction into a Unicode glyph."""
         segments = Junction.NONE
-        if row > 0 and canvas[row - 1][column] == VERTICAL_LINE:
+        if row > 0 and canvas[row - 1][column] == self._vertical_line:
             segments |= Junction.UP
         if (column + 1 < self._layout.drawing_columns
-                and canvas[row][column + 1] == HORIZONTAL_LINE):
+                and canvas[row][column + 1] == self._horizontal_line):
             segments |= Junction.RIGHT
         if (row + 1 < self._layout.drawing_rows
-                and canvas[row + 1][column] == VERTICAL_LINE):
+                and canvas[row + 1][column] == self._vertical_line):
             segments |= Junction.DOWN
-        if column > 0 and canvas[row][column - 1] == HORIZONTAL_LINE:
+        if column > 0 and canvas[row][column - 1] == self._horizontal_line:
             segments |= Junction.LEFT
-        return JUNCTION_GLYPHS[segments]
+        return self._junction_glyphs[segments]
 
-    def _paint_cell(self, cell: Cell) -> None:
+    def _paint_cell(self, cell: tuple[int, int]) -> None:
         """Fill a cell interior using the terminal's current background."""
         self._terminal.move_cursor(self._layout.cell_interior(cell))
-        self._terminal.write(CELL_INTERIOR)
+        self._terminal.write(self._cell_interior)
 
     def _draw_pattern(self) -> None:
         """Color fully closed pattern cells without touching their walls."""
@@ -153,9 +156,9 @@ class Renderer:
         cell = self._entry
         self._paint_cell(cell)
         for letter in self._solution:
-            direction = DIRECTIONS_BY_LETTER[letter]
+            direction = self._directions_by_letter[letter]
             self._terminal.move_cursor(self._layout.passage(cell, direction))
-            passage_fill = CELL_INTERIOR if direction.row_offset else " "
+            passage_fill = self._cell_interior if direction.row_offset else " "
             self._terminal.write(passage_fill)
             cell = direction.neighbor(cell)
             self._paint_cell(cell)
@@ -169,7 +172,9 @@ class Renderer:
         ):
             self._terminal.move_cursor(self._layout.cell_interior(cell))
             self._terminal.set_color(background, ForegroundColor.BRIGHT_WHITE)
-            self._terminal.write(marker.ljust(CELL_INTERIOR_WIDTH))
+            self._terminal.write(
+                marker.ljust(self._layout.cell_interior_width),
+            )
         self._terminal.reset_color()
 
     def render(self) -> None:

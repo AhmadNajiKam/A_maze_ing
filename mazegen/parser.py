@@ -4,21 +4,20 @@ from os.path import exists, samefile
 from secrets import randbits
 
 from .config import Config
-from .directions import Position
-
-RANDOM_SEED_BITS = 64
-REQUIRED_KEYS = {"WIDTH", "HEIGHT", "ENTRY", "EXIT", "OUTPUT_FILE", "PERFECT"}
-SUPPORTED_KEYS = REQUIRED_KEYS | {"SEED"}
 
 
 class Parser:
     """Convert a configuration file to typed settings with readable errors."""
 
+    def _required_keys(self) -> set[str]:
+        """Build mandatory keys without shared mutable data."""
+        return {"WIDTH", "HEIGHT", "ENTRY", "EXIT", "OUTPUT_FILE", "PERFECT"}
+
     def parse(self, filename: str) -> Config:
         """Read settings, preserving filename and line context in errors."""
         try:
             values = self._read_values(filename)
-            missing = sorted(REQUIRED_KEYS - values.keys())
+            missing = sorted(self._required_keys() - values.keys())
             if missing:
                 raise ValueError(
                     "missing mandatory keys: " + ", ".join(missing),
@@ -36,7 +35,7 @@ class Parser:
                 output_file=output_file,
                 perfect=values["PERFECT"].lower() == "true",
                 seed=(int(values["SEED"]) if "SEED" in values
-                      else randbits(RANDOM_SEED_BITS)),
+                      else randbits(64)),
             )
             config.validate()
             return config
@@ -46,6 +45,7 @@ class Parser:
     def _read_values(self, filename: str) -> dict[str, str]:
         """Normalize keys and reject malformed or duplicate entries."""
         values: dict[str, str] = {}
+        supported_keys = self._required_keys() | {"SEED"}
         with open(filename, encoding="utf-8") as file:
             for line_number, line in enumerate(file, 1):
                 if not line.strip() or line.lstrip().startswith("#"):
@@ -55,7 +55,7 @@ class Parser:
                         raise ValueError("expected one KEY=VALUE pair")
                     key, value = (part.strip() for part in line.split("="))
                     key = key.upper()
-                    if key not in SUPPORTED_KEYS:
+                    if key not in supported_keys:
                         raise ValueError(f"unknown key: {key}")
                     if key in values:
                         raise ValueError(f"duplicate key: {key}")
@@ -80,7 +80,7 @@ class Parser:
         elif not value:
             raise ValueError("OUTPUT_FILE must not be empty")
 
-    def _parse_position(self, value: str) -> Position:
+    def _parse_position(self, value: str) -> tuple[int, int]:
         """Convert an already syntax-checked external x,y position."""
         x, y = value.split(",")
         return int(x), int(y)

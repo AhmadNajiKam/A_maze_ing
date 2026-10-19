@@ -2,7 +2,6 @@
 
 from collections import deque
 
-from .directions import Cell
 from .grid import MazeGrid
 
 
@@ -12,8 +11,8 @@ class BFS:
     def __init__(
             self,
             maze: list[list[int]],
-            entry: Cell,
-            exit: Cell,) -> None:
+            entry: tuple[int, int],
+            exit: tuple[int, int],) -> None:
         """Store the maze and the endpoints to be connected."""
         self._grid = MazeGrid(maze)
         if not self._grid.contains(entry) or not self._grid.contains(exit):
@@ -25,7 +24,7 @@ class BFS:
         """Return shortest N/E/S/W directions or raise if no route exists."""
         queue = deque([self.entry])
         visited = {self.entry}
-        parent: dict[Cell, tuple[Cell, str]] = {}
+        parent: dict[tuple[int, int], tuple[tuple[int, int], str]] = {}
 
         while queue:
             current = queue.popleft()
